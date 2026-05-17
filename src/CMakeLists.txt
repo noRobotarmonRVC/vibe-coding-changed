@@ -21,6 +21,7 @@ add_library(rvc_core
     app/RvcController.cpp
     simulator/Simulator.cpp
     ui/ConsoleDisplay.cpp
+    ui/GridDisplay.cpp
 )
 target_include_directories(rvc_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

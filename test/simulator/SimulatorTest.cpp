@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include "simulator/Simulator.hpp"
 
 TEST(SimulatorTest, StartMovesForwardAndCleansOn) {

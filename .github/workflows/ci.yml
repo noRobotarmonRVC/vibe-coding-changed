@@ -20,8 +20,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake g++ clang-tidy gcovr
 
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ hashFiles('src/CMakeLists.txt') }}
+          restore-keys: fetchcontent-
+
       - name: Configure (with coverage)
-        run: cmake -S src -B build -DENABLE_COVERAGE=ON
+        run: cmake -S src -B build -DENABLE_COVERAGE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Build
         run: cmake --build build --parallel
@@ -29,11 +36,17 @@ jobs:
       - name: Run tests
         run: cd build && ctest --output-on-failure
 
+      - name: Static analysis
+        run: |
+          find src test -name '*.cpp' \
+            | xargs clang-tidy -p build --warnings-as-errors='*'
+
       - name: Coverage report
         run: |
           mkdir -p coverage
-          gcovr -r src build \
-            --exclude '../build/_deps' \
+          gcovr -r . build \
+            --filter 'src/' \
+            --exclude 'build/_deps/.*' \
             --html --html-details \
             -o coverage/index.html \
             --print-summary
