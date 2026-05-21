@@ -12,6 +12,7 @@ public:
 
     void render(Position rvc, Heading heading,
                 const std::set<std::pair<int,int>>& obstacles,
+                const std::set<std::pair<int,int>>& dust_cells,
                 Direction dir, CleanPower power, int tick) const;
 
 private:

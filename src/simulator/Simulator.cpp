@@ -23,6 +23,15 @@ void Simulator::tick() {
     _left.inject(isBlocked(adjacentCell(_pos, turnLeft(_heading))));
     _right.inject(isBlocked(adjacentCell(_pos, turnRight(_heading))));
 
+    // Auto-inject dust sensor if robot is on a dust cell, then consume it
+    auto dust_key = std::make_pair(_pos.x, _pos.y);
+    if (_dust_cells.count(dust_key)) {
+        _dust.inject(true);
+        _dust_cells.erase(dust_key);
+    } else {
+        _dust.inject(false);
+    }
+
     // Front sensor is interrupt-driven: trigger handler if blocked, else run tick
     if (isBlocked(adjacentCell(_pos, _heading))) {
         _controller.onFrontObstacleDetected();
@@ -43,6 +52,7 @@ void Simulator::injectRight(bool reading) { _right.inject(reading); }
 void Simulator::injectDust(bool reading)  { _dust.inject(reading); }
 
 void Simulator::placeObstacle(int x, int y) { _obstacles.insert({x, y}); }
+void Simulator::placeDust(int x, int y)     { _dust_cells.insert({x, y}); }
 
 Direction  Simulator::lastDirection() const { return _motor.last(); }
 CleanPower Simulator::lastPower()     const { return _cleaner.last(); }
@@ -52,6 +62,7 @@ int        Simulator::gridWidth()     const { return _grid_width; }
 int        Simulator::gridHeight()    const { return _grid_height; }
 
 const std::set<std::pair<int,int>>& Simulator::obstacles()  const { return _obstacles; }
+const std::set<std::pair<int,int>>& Simulator::dustCells() const { return _dust_cells; }
 const std::vector<Direction>&       Simulator::motorLog()   const { return _motor.log(); }
 const std::vector<CleanPower>&      Simulator::cleanerLog() const { return _cleaner.log(); }
 

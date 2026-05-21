@@ -44,6 +44,10 @@ void RvcController::onTick() {
         _state = RvcState::INTENSIFYING;
         _cleaner->setPower(CleanPower::POWER_UP);
     }
+
+    if (_state == RvcState::CLEANING || _state == RvcState::INTENSIFYING) {
+        _motor->move(Direction::FORWARD);
+    }
 }
 
 void RvcController::onFrontObstacleDetected() {

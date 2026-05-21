@@ -30,6 +30,7 @@ public:
 
     // Environment setup
     void placeObstacle(int x, int y);
+    void placeDust(int x, int y);
 
     // Observation
     [[nodiscard]] Direction  lastDirection() const;
@@ -39,7 +40,8 @@ public:
     [[nodiscard]] int        gridWidth()     const;
     [[nodiscard]] int        gridHeight()    const;
 
-    [[nodiscard]] const std::set<std::pair<int,int>>& obstacles()   const;
+    [[nodiscard]] const std::set<std::pair<int,int>>& obstacles()  const;
+    [[nodiscard]] const std::set<std::pair<int,int>>& dustCells() const;
     [[nodiscard]] const std::vector<Direction>&       motorLog()    const;
     [[nodiscard]] const std::vector<CleanPower>&      cleanerLog()  const;
 
@@ -56,6 +58,7 @@ private:
     Heading  _heading;
     size_t   _motor_log_applied = 0;
     std::set<std::pair<int,int>> _obstacles;
+    std::set<std::pair<int,int>> _dust_cells;
 
     SimulatedSensor           _front;
     SimulatedSensor           _left;
