@@ -1,5 +1,14 @@
 # The RVC Contorl SW
 
+## Revision History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0 | 2026-05-21 | Initial draft |
+| 1.1 | 2026-05-29 | Removed Right Sensor Input from the DFD Level 0 and the I/O event table (right side now probed via the front sensor — AD-11) |
+
+---
+
 ## Preliminary Requirements for RVC SW Controller
 - An RVC automatically cleans and mops household surface.
 - It goes straight forward while cleaning
@@ -23,7 +32,6 @@
 RVC Control SW
 <- Front Sensor Input - Front Sensor
 <- Left Sensor Input  - Left Sensor
-<- Right Sensor Input - Right Sensor
 <- Dust Sensor Input  - Dust Sensor
 <- Tick               - Digital Clock
 -> Direction          - Motor
@@ -34,7 +42,6 @@ RVC Control SW
 | ------------------ | -------------------------------------------------------------------------------------------------- | --------------------------------- |
 | Front Sensor Input | Detects obstacles in front of the RVC                                                              | True / False, interrupt           |
 | Left Sensor Input  | Detects obstacles in the left side of the RVC periodically.                                        | True / False, Periodic            |
-| Right Sensor Input | Detects obstacles in the right side of the RVC periodically.                                       | True / False,  Periodic<br>       |
 | Dust Sensor Input  | Detects dust on the floor periodically.                                                            | True / False,  Periodic           |
 | Direction          | Direction commands to the motor (go forward / turn left with an angle  / turn right with an angle) | Forward / Backward / Left / Right |
 | Clean              | Turn off / Turn on / Power Up                                                                      | On / Off / Up                     |

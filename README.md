@@ -45,7 +45,7 @@ OOADProject/
 ├── src/
 │   ├── interfaces/        # ISensor, IMotorController, ICleanerController, INavigationStrategy
 │   ├── domain/            # DefaultNavigationStrategy, SensorData, Position, Heading, enum 정의
-│   ├── hal/               # FrontSensor, LeftSensor, RightSensor, DustSensor
+│   ├── hal/               # FrontSensor, LeftSensor, DustSensor (RightSensor 미사용 — AD-11)
 │   ├── app/               # RvcController, main.cpp
 │   ├── simulator/         # Simulator, SimulatedMotor, SimulatedCleaner, SimulatedSensor
 │   └── ui/                # ConsoleDisplay, GridDisplay
@@ -85,8 +85,8 @@ OOADProject/
 │   INavigationStrategy                         │
 ├──────────────────────────────────────────────┤
 │      Hardware Abstraction Layer (HAL)         │
-│   FrontSensor  LeftSensor  RightSensor        │
-│   DustSensor                                  │
+│   FrontSensor  LeftSensor  DustSensor         │
+│   (RightSensor 제거 — AD-11)                  │
 └──────────────────────────────────────────────┘
 ```
 
@@ -97,11 +97,17 @@ OOADProject/
 | 결정 | 내용 |
 |---|---|
 | AD-01: Strategy 패턴 | 내비게이션 로직을 `INavigationStrategy`로 분리해 ML 알고리즘 등으로 교체 가능 |
-| AD-02: 인터럽트 vs 폴링 | `FrontSensor`는 인터럽트 방식(`onInterrupt()`), 나머지 센서는 매 Tick 폴링 |
+| AD-02: 인터럽트 vs 폴링 | `FrontSensor`는 인터럽트 방식(`onInterrupt()`), 좌측·먼지 센서는 매 Tick 폴링 |
 | AD-03: 상태 머신 | `RvcController`가 `RvcState` enum으로 상태를 명시적으로 관리 |
 | AD-04: 의존성 주입 | 모든 하드웨어 의존성을 생성자 주입으로 전달 → Google Test 목(Mock) 격리 가능 |
+| AD-11: 우측 센서 제거 | 우측 센서 제거, 전방 센서를 회전·재활용해 우측 탐지 (2026-05-29) |
+| AD-12: 멀티틱 회피/탈출 | 회피·탈출을 한 틱에 원자 처리하지 않고 `onTick()`마다 한 단계씩 (후진 1틱 1칸) (2026-05-29) |
 
-### 상태 머신 (`RvcState`)
+### 상태 머신 (`RvcState`) — 멀티틱
+
+인터럽트는 STOP + `AVOIDING_OBSTACLE` 진입만 하고, 회피·탈출은 `onTick()`마다
+한 단계씩 진행합니다(AD-12). 우측 센서가 없어 좌측이 막히면 우회전 후 전방 센서로
+우측을 확인합니다(AD-11).
 
 ```
                          dust 감지
@@ -111,13 +117,17 @@ OOADProject/
               │                               │
 IDLE ─startCleaning()─► CLEANING ◄───────────┘
                             │  ▲
-               front obstacle│  │열린 방향 확보 후 복귀
-                            ▼  │
-                     AVOIDING_OBSTACLE
-                            │
-                    좌우 모두 차단
-                            ▼
-                         ESCAPING ──후진 후 전진──► CLEANING
+          front obstacle    │  │ 전진 재개
+          (STOP)            ▼  │
+                     AVOIDING_OBSTACLE ──(좌측 개방)─ 좌회전 ─┐
+                            │                                 │
+                    (좌측 차단) 우회전                         │
+                            ▼                                 │
+                     CHECKING_RIGHT ──(우측 개방)─ 전진 재개 ─┤
+                            │                                 │
+                    (우측 차단) 원래 방향 복귀                  │
+                            ▼                                 │
+                       ESCAPING ──후진 1칸→ 재평가(AVOIDING) ─┘
 ```
 
 ---

@@ -1,5 +1,14 @@
 # Vision
 
+## Revision History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0 | 2026-05-21 | Initial draft |
+| 1.1 | 2026-05-29 | Removed Right Sensor from the system boundary (the right side is now sensed by rotating and reusing the front sensor — AD-11) |
+
+---
+
 ## 1. Introduction
 
 This document defines the high-level goals, stakeholders, and product scope for the RVC (Robot Vacuum Cleaner) Control SW. It serves as the authoritative statement of intent for all subsequent phases of the Unified Process.
@@ -38,8 +47,7 @@ The SW does **not** control HW directly at the electrical level. It operates on 
 ```
                         ┌─────────────────────┐
  Front Sensor ─────────>│                     │──────────> Motor (Direction)
- Left Sensor  ─────────>│   RVC Control SW    │
- Right Sensor ─────────>│                     │──────────> Cleaner (Power)
+ Left Sensor  ─────────>│   RVC Control SW    │──────────> Cleaner (Power)
  Dust Sensor  ─────────>│                     │
  Timer (Tick) ─────────>│                     │
                         └─────────────────────┘

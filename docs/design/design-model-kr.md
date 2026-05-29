@@ -1,5 +1,14 @@
 # Design Model
 
+## 개정 이력
+
+| 버전 | 날짜 | 변경 내용 |
+|---|---|---|
+| 1.0 | 2026-05-21 | 최초 작성 |
+| 1.1 | 2026-05-29 | `RvcState`에 `CHECKING_RIGHT` 추가; `SensorData`에서 `is_right_blocked` 제거; navigate 규칙·시퀀스·상태머신을 멀티틱+우측 회전 탐지로 갱신 (AD-11, AD-12) |
+
+---
+
 Design Model은 RVC Control SW의 소프트웨어 구조 — 클래스, 인터페이스, 책임, 주요 협력 관계를 정의한다. 모든 명명은 프로젝트 코드 컨벤션을 따른다.
 
 ---
@@ -23,8 +32,9 @@ enum class CleanPower { OFF, ON, POWER_UP };
 enum class RvcState {
     IDLE,
     CLEANING,           // 정상 전진 navigation
-    AVOIDING_OBSTACLE,  // 전방 차단, 측면 중 하나 이상 개방
-    ESCAPING,           // 포위 상태 (전방 + 좌측 + 우측 모두 차단)
+    AVOIDING_OBSTACLE,  // 전방 차단, 다음 단계 결정
+    CHECKING_RIGHT,     // 우회전하여 전방 센서로 우측 확인 중
+    ESCAPING,           // 포위 상태; 틱당 한 칸씩 후진
     INTENSIFYING        // 먼지 감지, power up 활성
 };
 ```
@@ -39,7 +49,7 @@ ISensor
 ─────────────────────────────
 + detect() : bool   {pure virtual}
 ```
-구현체: `FrontSensor`, `LeftSensor`, `RightSensor`, `DustSensor`.
+구현체: `FrontSensor`, `LeftSensor`, `DustSensor`. (`RightSensor`는 2026-05-29 제거 — AD-11 참조; 우측은 우회전 후 전방 센서를 재활용해 탐지한다.)
 
 ### `IMotorController`
 ```
@@ -75,7 +85,6 @@ SensorData
 ─────────────────────────────
 + is_front_blocked : bool
 + is_left_blocked  : bool
-+ is_right_blocked : bool
 + has_dust         : bool
 ```
 
@@ -93,7 +102,7 @@ FrontSensor
 + onInterrupt() : void    ← interrupt 핸들러에서 호출
 ```
 
-### `LeftSensor : ISensor`, `RightSensor : ISensor`, `DustSensor : ISensor`
+### `LeftSensor : ISensor`, `DustSensor : ISensor`
 ```
 [Sensor]
 ─────────────────────────────
@@ -101,6 +110,7 @@ FrontSensor
 ─────────────────────────────
 + detect() : bool
 ```
+> `RightSensor`는 파일로는 남아 있으나 컨트롤러에 연결되지 않는다(AD-11). 우측은 우회전 후 전방 센서를 읽어 탐지한다.
 
 ### `DefaultNavigationStrategy : INavigationStrategy`
 요구사항에서 정의한 규칙 기반 navigation 로직을 구현한다.
@@ -111,9 +121,9 @@ DefaultNavigationStrategy
 + navigate(data : SensorData) : Direction
 ```
 
-인코딩된 규칙 (우선순위 순서):
-1. 전방 + 좌측 + 우측 차단 → BACKWARD (호출자가 ESCAPING으로 전이 후 회전)
-2. 전방 차단, 측면 개방 → LEFT 또는 RIGHT (개방된 측면으로 회전)
+인코딩된 규칙 (우측 센서 없음 — AD-11 참조):
+1. 전방 + 좌측 차단 → BACKWARD (컨트롤러에 "우측 탐지 후 탈출" 신호)
+2. 전방 차단, 좌측 개방 → LEFT
 3. 장애물 없음 → FORWARD
 
 ### `RvcController`
@@ -122,9 +132,8 @@ DefaultNavigationStrategy
 ```
 RvcController
 ─────────────────────────────────────────────────────
-- _front_sensor      : ISensor*
+- _front_sensor      : ISensor*   ← 우측 탐지에도 재활용
 - _left_sensor       : ISensor*
-- _right_sensor      : ISensor*
 - _dust_sensor       : ISensor*
 - _motor             : IMotorController*
 - _cleaner           : ICleanerController*
@@ -148,9 +157,9 @@ RvcController
           │  - _state : RvcState                            │
           └──┬────────┬────────┬────────┬────────┬─────────┘
              │        │        │        │        │
-         ISensor  ISensor  ISensor  ISensor  IMotorController  ICleanerController  INavigationStrategy
-             │        │        │        │
-       FrontSensor  LeftSensor  RightSensor  DustSensor
+         ISensor  ISensor  ISensor  IMotorController  ICleanerController  INavigationStrategy
+             │        │        │
+       FrontSensor  LeftSensor  DustSensor
 
     INavigationStrategy
           │
@@ -183,37 +192,36 @@ Timer          RvcController        ISensor(x3+dust)    IMotorController   IClea
 
 ---
 
-### UC-03: 전방 장애물 회피
+### UC-03: 전방 장애물 회피 (멀티틱, 좌측 개방)
 
 ```
-FrontSensor    RvcController        ISensor(L/R)        IMotorController   ICleanerController
-  │                  │                    │                    │                   │
-  │──onFrontObstacleDetected()──────────>│                    │                   │
-  │                  │────────────────────────move(STOP)──────>│                   │
-  │                  │──detect()─────────>│ (left)             │                   │
-  │                  │<──false────────────│                    │                   │
-  │                  │   [left 개방 → LEFT로 회전]             │                   │
-  │                  │────────────────────────move(LEFT)──────>│                   │
-  │                  │────────────────────────move(FORWARD)───>│                   │
-  │                  │   [state = CLEANING]                    │                   │
+FrontSensor    RvcController     ISensor(left)        IMotorController
+  │                  │                 │                    │
+  │──onFrontObstacleDetected()──────> │                    │
+  │                  │─────────────────────move(STOP)──────>│   [state = AVOIDING_OBSTACLE]
+Timer──onTick()────>│──detect()──────>│ (left) → false      │
+  │                  │   [좌측 개방 → 좌회전]                │
+  │                  │─────────────────────move(LEFT)──────>│   [state = CLEANING]
+Timer──onTick()────>│─────────────────────move(FORWARD)───>│   [전진 재개]
 ```
 
 ---
 
-### UC-04: 포위 상태 탈출
+### UC-04: 포위 상태 탈출 (멀티틱, 전방 센서로 우측 엿보기)
 
 ```
-FrontSensor    RvcController        ISensor(L/R)        IMotorController
-  │                  │                    │                    │
-  │──onFrontObstacleDetected()──────────>│                    │
-  │                  │──detect()─────────>│ (left) → true      │
-  │                  │──detect()─────────>│ (right) → true     │
-  │                  │   [state = ESCAPING]                    │
-  │                  │────────────────────────move(BACKWARD)──>│
-  │                  │   [회전 방향 선택]                      │
-  │                  │────────────────────────move(LEFT/RIGHT)>│
-  │                  │────────────────────────move(FORWARD)───>│
-  │                  │   [state = CLEANING]                    │
+FrontSensor    RvcController     ISensor(left/front)  IMotorController
+  │                  │                 │                    │
+  │──onFrontObstacleDetected()──────> │                    │
+  │                  │─────────────────────move(STOP)──────>│   [state = AVOIDING_OBSTACLE]
+Timer──onTick()────>│──detect()──────>│ (left) → true       │
+  │                  │   [좌측 차단 → 우측 엿보기]           │
+  │                  │─────────────────────move(RIGHT)─────>│   [state = CHECKING_RIGHT]
+Timer──onTick()────>│──detect()──────>│ (전방 = 원래 우측) → true
+  │                  │   [우측 차단 → 원래 방향 복귀]        │
+  │                  │─────────────────────move(LEFT)──────>│   [state = ESCAPING]
+Timer──onTick()────>│─────────────────────move(BACKWARD)──>│   [한 칸 후진 → AVOIDING_OBSTACLE]
+  │                  │   [다음 틱에 좌우 재평가]             │
 ```
 
 ---
@@ -237,22 +245,32 @@ Timer          RvcController        DustSensor          ICleanerController
 
 ---
 
-## 8. State Machine: RvcController
+## 8. State Machine: RvcController (멀티틱)
+
+인터럽트는 STOP 발행 + AVOIDING_OBSTACLE 진입만 한다. 이후 회피·탈출은
+`onTick()`마다 한 단계씩 진행한다(AD-12). 틱당 이동 명령은 하나.
 
 ```
          start()
-  [IDLE] ──────────────────────────────────────────> [CLEANING]
-                                                         │   ▲
-                      onFrontObstacleDetected()           │   │ 회전 + 전진
-            ┌─────── (측면 개방) ─────────────────> [AVOIDING_OBSTACLE]
-            │                                             │
-            │        onFrontObstacleDetected()            │
-            └─────── (전방향 차단) ──────────────> [ESCAPING]
-                                                         │   ▲
-                                                         └───┘ 후진 + 회전 + 전진
-            
-  [CLEANING] ──── 먼지 감지 ──────────────────────> [INTENSIFYING]
-  [INTENSIFYING] ─ 타이머 만료 ───────────────────> [CLEANING]
+  [IDLE] ───────────────────────────────────────> [CLEANING]
+                                                       │  ▲
+            onFrontObstacleDetected() (STOP)           │  │ onTick: 전진
+  [CLEANING] ────────────────────────> [AVOIDING_OBSTACLE] │
+                                                       │     │
+              onTick: 좌측 개방   → 좌회전 ───────────┼─────┤
+              onTick: 좌측 차단   → 우회전             │     │
+                                                       ▼     │
+                                             [CHECKING_RIGHT]│
+                  onTick: 우측 개방 → 전진 재개 ──────┼─────┤
+                  onTick: 우측 차단 → 원래 방향 복귀   │     │
+                                                       ▼     │
+                                                  [ESCAPING] │
+                  onTick: 한 칸 후진 → 재평가         │     │
+                                                       ▼     │
+                                       (다시 AVOIDING_OBSTACLE)
 
-  모든 상태 ──── stop() ──────────────────────────> [IDLE]
+  [CLEANING] ──── 먼지 감지 ─────────────────────> [INTENSIFYING]
+  [INTENSIFYING] ─ 타이머 만료 ──────────────────> [CLEANING]
+
+  모든 상태 ──── stop() ─────────────────────────> [IDLE]
 ```

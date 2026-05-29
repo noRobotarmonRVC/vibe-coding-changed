@@ -1,5 +1,14 @@
 # System Operation Interface
 
+## Revision History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0 | 2026-05-21 | Initial draft |
+| 1.1 | 2026-05-29 | Removed right-sensor reads from `tick()`/`onFrontObstacleDetected()`; `onFrontObstacleDetected()` now only issues STOP and enters AVOIDING_OBSTACLE; decision logic reworked for multi-tick avoidance with right-probe (AD-11, AD-12) |
+
+---
+
 | «interface» RVCSystem | `startCleaning()` · `tick()` · `onFrontObstacleDetected()` · `stopCleaning()` |
 |---|---|
 
@@ -44,7 +53,7 @@ System Operations are derived from the system events identified in Use-Case scen
 | **Operation** | `tick()` |
 | **Related UC** | UC-02, UC-03, UC-04, UC-05 |
 | **Trigger Actor** | Timer |
-| **Description** | Periodic heartbeat that drives all sensor polling and navigation decisions while the RVC is active. On each tick, the system reads Left, Right, and Dust sensors and determines the next action. |
+| **Description** | Periodic heartbeat that drives all sensor polling and navigation decisions while the RVC is active. On each tick, the system reads the Left and Dust sensors and advances the avoidance/escape state machine one step. The right side, when needed, is probed by rotating right and reading the front sensor. |
 | **Preconditions** | RVC is in an active state (CLEANING, AVOIDING_OBSTACLE, ESCAPING, or INTENSIFYING). |
 | **Postconditions** | Motor direction and cleaner state are updated based on current sensor readings. State may transition per the table below. |
 
@@ -53,8 +62,8 @@ System Operations are derived from the system events identified in Use-Case scen
 | Sensor Reading | Resulting State | Motor | Cleaner |
 |---|---|---|---|
 | No obstacles, no dust | CLEANING | FORWARD | ON |
-| Front = True, Left or Right open | AVOIDING_OBSTACLE | STOP → TURN → FORWARD | ON |
-| Front = True, Left = True, Right = True | ESCAPING | BACKWARD → TURN → FORWARD | ON |
+| Front blocked, left or right (probed) open | AVOIDING_OBSTACLE → CHECKING_RIGHT → CLEANING | one step per tick (turn, then forward) | ON |
+| Front blocked, left blocked, right (probed) blocked | ESCAPING | BACKWARD (one cell per tick), then re-evaluate | ON |
 | Dust = True | INTENSIFYING | FORWARD | POWER_UP |
 | Intensification duration elapsed | CLEANING | FORWARD | ON |
 
@@ -69,17 +78,20 @@ System Operations are derived from the system events identified in Use-Case scen
 | **Operation** | `onFrontObstacleDetected()` |
 | **Related UC** | UC-03, UC-04 |
 | **Trigger Actor** | Front Sensor (interrupt-driven) |
-| **Description** | Interrupt-based notification that an obstacle has been detected directly ahead. Unlike `tick()`, this is asynchronous — the Front Sensor fires this event immediately upon detection, not on a polling cycle. |
-| **Preconditions** | RVC is in CLEANING or AVOIDING_OBSTACLE state. |
-| **Postconditions** | Motor command = STOP. System reads Left and Right sensors to determine next state (AVOIDING_OBSTACLE or ESCAPING). |
+| **Description** | Interrupt-based notification that an obstacle has been detected directly ahead. Unlike `tick()`, this is asynchronous — it fires immediately upon detection. It only issues STOP and enters AVOIDING_OBSTACLE; the actual avoidance/escape proceeds over later ticks (AD-12). |
+| **Preconditions** | RVC is in CLEANING state. |
+| **Postconditions** | Motor command = STOP; state = AVOIDING_OBSTACLE. |
 
-**Decision logic:**
+**Decision logic (advances one step per `onTick()`):**
 
-| Left Sensor | Right Sensor | Resulting State |
-|---|---|---|
-| False (open) | any | AVOIDING_OBSTACLE — turn left |
-| any | False (open) | AVOIDING_OBSTACLE — turn right |
-| True | True | ESCAPING |
+| Step (state) | Condition | Action | Next State |
+|---|---|---|---|
+| interrupt | front blocked | STOP | AVOIDING_OBSTACLE |
+| AVOIDING_OBSTACLE | left open | turn left | CLEANING |
+| AVOIDING_OBSTACLE | left blocked | turn right (probe) | CHECKING_RIGHT |
+| CHECKING_RIGHT | right open | resume forward | CLEANING |
+| CHECKING_RIGHT | right blocked | turn back | ESCAPING |
+| ESCAPING | — | back up one cell | AVOIDING_OBSTACLE |
 
 **Cross-references:** UC-03 Step 1–3, UC-03 Alternative Flow, UC-04 Step 1
 
@@ -130,9 +142,9 @@ User       Front Sensor     RVC System       Timer
  |               |               |  Motor: FORWARD
  |               |               |               |
  |               |--onFrontObstacleDetected()--->|
- |               |               |  Motor: STOP
- |               |               |  [reads Left/Right]
- |               |               |  Motor: TURN → FORWARD
+ |               |               |  Motor: STOP (enter AVOIDING_OBSTACLE)
+ |               |               |  [onTick: reads Left; probes Right by rotating]
+ |               |               |  Motor: TURN → FORWARD (over later ticks)
  |               |               |               |
  |               |               |<----tick()----|
  |               |               |  (resumes navigation)

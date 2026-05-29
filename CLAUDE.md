@@ -74,9 +74,9 @@ Each iteration must implement all three components (Control SW, UI, Simulator) a
 The RVC Control SW uses a **4-layer architecture**: Application → Domain → Interface → HAL. Full detail is in `docs/design/sw-architecture.md`.
 
 **Key design decisions:**
-- `RvcController` is the central orchestrator with an explicit `RvcState` state machine (IDLE / CLEANING / AVOIDING_OBSTACLE / ESCAPING / INTENSIFYING).
+- `RvcController` is the central orchestrator with an explicit `RvcState` state machine (IDLE / CLEANING / AVOIDING_OBSTACLE / CHECKING_RIGHT / ESCAPING / INTENSIFYING). Avoidance/escape advance one step per `onTick()` (AD-12).
 - Navigation logic lives in `INavigationStrategy` / `DefaultNavigationStrategy` — injected into `RvcController` so it can be swapped (e.g., ML-based) without touching the controller.
-- `FrontSensor` is interrupt-driven (`onInterrupt()` → `onFrontObstacleDetected()`); Left, Right, Dust sensors are polled each Tick via `detect()`.
+- `FrontSensor` is interrupt-driven (`onInterrupt()` → `onFrontObstacleDetected()`); Left and Dust sensors are polled each Tick via `detect()`. The right sensor was removed (AD-11); the right side is probed by rotating right and reusing the front sensor.
 - All hardware dependencies are injected via constructor (`ISensor*`, `IMotorController*`, `ICleanerController*`) — enables full Google Test isolation with mocks.
 
 **Enums:** `Direction` {FORWARD, BACKWARD, LEFT, RIGHT, STOP} · `CleanPower` {OFF, ON, POWER_UP} · `RvcState`
@@ -87,7 +87,7 @@ The RVC Control SW uses a **4-layer architecture**: Application → Domain → I
 src/
 ├── interfaces/        # ISensor, IMotorController, ICleanerController, INavigationStrategy
 ├── domain/            # SensorData, enums, DefaultNavigationStrategy
-├── hal/               # FrontSensor, LeftSensor, RightSensor, DustSensor
+├── hal/               # FrontSensor, LeftSensor, DustSensor (RightSensor retired — AD-11)
 └── app/               # RvcController, main.cpp
 test/
 ├── domain/            # DefaultNavigationStrategyTest

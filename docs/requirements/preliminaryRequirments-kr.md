@@ -1,5 +1,14 @@
 # RVC Control SW
 
+## 개정 이력
+
+| 버전 | 날짜 | 변경 내용 |
+|---|---|---|
+| 1.0 | 2026-05-21 | 최초 작성 |
+| 1.1 | 2026-05-29 | DFD Level 0과 입출력 이벤트 표에서 Right Sensor Input 삭제 (우측은 전방 센서로 탐지 — AD-11) |
+
+---
+
 ## RVC SW Controller 예비 요구사항
 - RVC는 가정 내 표면을 자동으로 청소하고 걸레질한다.
 - 청소하는 동안 직진한다.
@@ -23,7 +32,6 @@
 RVC Control SW
 <- Front Sensor Input - Front Sensor
 <- Left Sensor Input  - Left Sensor
-<- Right Sensor Input - Right Sensor
 <- Dust Sensor Input  - Dust Sensor
 <- Tick               - Digital Clock
 -> Direction          - Motor
@@ -34,7 +42,6 @@ RVC Control SW
 | ------------------ | -------------------------------------------------------------------------------------------------- | --------------------------------- |
 | Front Sensor Input | RVC 전방의 장애물 감지                                                                             | True / False, interrupt           |
 | Left Sensor Input  | RVC 좌측의 장애물을 주기적으로 감지                                                                | True / False, Periodic            |
-| Right Sensor Input | RVC 우측의 장애물을 주기적으로 감지                                                                | True / False, Periodic            |
 | Dust Sensor Input  | 바닥의 먼지를 주기적으로 감지                                                                      | True / False, Periodic            |
 | Direction          | Motor에 대한 방향 명령 (전진 / 각도를 가진 좌회전 / 각도를 가진 우회전)                           | Forward / Backward / Left / Right |
 | Clean              | 끄기 / 켜기 / Power Up                                                                             | On / Off / Up                     |

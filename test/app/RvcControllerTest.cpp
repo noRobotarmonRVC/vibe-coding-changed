@@ -26,14 +26,16 @@ public:
 };
 
 // ── fixture ───────────────────────────────────────────────────────────────────
+// No right sensor: the controller reuses the front sensor to probe the right
+// side after rotating right.
 
 class RvcControllerTest : public ::testing::Test {
 protected:
-    MockSensor front, left, right, dust;
+    MockSensor front, left, dust;
     MockMotor motor;
     MockCleaner cleaner;
     DefaultNavigationStrategy nav;
-    RvcController controller{&front, &left, &right, &dust, &motor, &cleaner, &nav};
+    RvcController controller{&front, &left, &dust, &motor, &cleaner, &nav};
 };
 
 // ── lifecycle ─────────────────────────────────────────────────────────────────
@@ -82,54 +84,82 @@ TEST_F(RvcControllerTest, CleaningPowerRestoresAfterIntensifyDuration) {
     EXPECT_EQ(cleaner.last(), CleanPower::ON);
 }
 
-// ── obstacle avoidance ────────────────────────────────────────────────────────
+// ── obstacle avoidance (multi-tick) ───────────────────────────────────────────
 
-TEST_F(RvcControllerTest, FrontObstacleOpenSidesTurnsLeft) {
+TEST_F(RvcControllerTest, FrontObstacleOnlyStopsThenWaits) {
     controller.start();
     motor.log.clear();
-    left.state  = false;
-    right.state = false;
 
-    controller.onFrontObstacleDetected();
+    controller.onFrontObstacleDetected();  // interrupt: STOP only, enter AVOIDING
 
-    // STOP → LEFT → FORWARD
-    ASSERT_GE(motor.log.size(), 3U);
+    ASSERT_EQ(motor.log.size(), 1U);
     EXPECT_EQ(motor.log[0], Direction::STOP);
-    EXPECT_EQ(motor.log[1], Direction::LEFT);
-    EXPECT_EQ(motor.log[2], Direction::FORWARD);
 }
 
-TEST_F(RvcControllerTest, FrontObstacleLeftBlockedTurnsRight) {
+TEST_F(RvcControllerTest, LeftOpenTurnsLeftThenResumesForward) {
     controller.start();
     motor.log.clear();
-    left.state  = true;
-    right.state = false;
+    left.state = false;  // left open
 
-    controller.onFrontObstacleDetected();
+    controller.onFrontObstacleDetected();  // STOP, AVOIDING
+    controller.onTick();                   // left open -> LEFT, CLEANING
+    EXPECT_EQ(motor.last(), Direction::LEFT);
 
-    ASSERT_GE(motor.log.size(), 3U);
+    controller.onTick();                   // CLEANING -> FORWARD
+    EXPECT_EQ(motor.last(), Direction::FORWARD);
+}
+
+TEST_F(RvcControllerTest, LeftBlockedRightOpenProbesRightThenResumes) {
+    controller.start();
+    motor.log.clear();
+    left.state = true;   // left blocked -> must probe right
+
+    controller.onFrontObstacleDetected();  // STOP, AVOIDING
+    controller.onTick();                   // left blocked -> RIGHT (probe), CHECKING_RIGHT
+    EXPECT_EQ(motor.last(), Direction::RIGHT);
+
+    front.state = false;                   // right side (now front) is open
+    controller.onTick();                   // CHECKING_RIGHT -> CLEANING (already facing right)
+    controller.onTick();                   // CLEANING -> FORWARD
+    EXPECT_EQ(motor.last(), Direction::FORWARD);
+}
+
+TEST_F(RvcControllerTest, SurroundedProbesRightThenBacksUpOneCell) {
+    controller.start();
+    motor.log.clear();
+    left.state = true;
+
+    controller.onFrontObstacleDetected();  // STOP, AVOIDING
+    controller.onTick();                   // RIGHT (probe), CHECKING_RIGHT
+    front.state = true;                    // right side also blocked -> surrounded
+    controller.onTick();                   // LEFT (face back), ESCAPING
+    controller.onTick();                   // BACKWARD (one cell), back to AVOIDING
+
+    // STOP -> RIGHT -> LEFT -> BACKWARD, with exactly one BACKWARD per escape
+    ASSERT_EQ(motor.log.size(), 4U);
     EXPECT_EQ(motor.log[0], Direction::STOP);
     EXPECT_EQ(motor.log[1], Direction::RIGHT);
-    EXPECT_EQ(motor.log[2], Direction::FORWARD);
-}
-
-TEST_F(RvcControllerTest, SurroundedEscapesBackwardThenLeftThenForward) {
-    controller.start();
-    motor.log.clear();
-    left.state  = true;
-    right.state = true;
-
-    controller.onFrontObstacleDetected();
-
-    // STOP → BACKWARD → LEFT → FORWARD
-    ASSERT_GE(motor.log.size(), 4U);
-    EXPECT_EQ(motor.log[0], Direction::STOP);
-    EXPECT_EQ(motor.log[1], Direction::BACKWARD);
     EXPECT_EQ(motor.log[2], Direction::LEFT);
-    EXPECT_EQ(motor.log[3], Direction::FORWARD);
+    EXPECT_EQ(motor.log[3], Direction::BACKWARD);
 }
 
 TEST_F(RvcControllerTest, FrontObstacleIgnoredWhenIdle) {
     controller.onFrontObstacleDetected();
     EXPECT_TRUE(motor.log.empty());
+}
+
+// A front obstacle during INTENSIFYING still stops and enters avoidance.
+TEST_F(RvcControllerTest, IntensifyingInterruptedByFrontObstacle) {
+    controller.start();
+    dust.state = true;
+    controller.onTick();                   // CLEANING -> INTENSIFYING (POWER_UP)
+    ASSERT_EQ(cleaner.last(), CleanPower::POWER_UP);
+    motor.log.clear();
+
+    controller.onFrontObstacleDetected();  // interrupt while intensifying
+    EXPECT_EQ(motor.last(), Direction::STOP);
+
+    left.state = false;
+    controller.onTick();                   // AVOIDING -> left open -> turn left
+    EXPECT_EQ(motor.last(), Direction::LEFT);
 }

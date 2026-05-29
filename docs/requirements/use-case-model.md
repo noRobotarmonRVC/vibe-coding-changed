@@ -1,13 +1,21 @@
 # Use-Case Model
 
+## Revision History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0 | 2026-05-21 | Initial draft |
+| 1.1 | 2026-05-29 | Removed Right Sensor actor; UC-02/03/04 no longer read a right sensor — the right side is probed by rotating right and reading the front sensor (AD-11) |
+
+---
+
 ## 1. Actors
 
 | Actor | Type | Description |
 |---|---|---|
 | User | Primary | Starts and stops a cleaning session |
-| Front Sensor | External System | Detects obstacles directly ahead; interrupt-driven |
+| Front Sensor | External System | Detects obstacles directly ahead; interrupt-driven. Also reused to check the right side after rotating right. |
 | Left Sensor | External System | Detects obstacles on the left side; periodic |
-| Right Sensor | External System | Detects obstacles on the right side; periodic |
 | Dust Sensor | External System | Detects dust on the floor; periodic |
 | Timer | External System | Provides periodic Tick signals to drive periodic behavior |
 
@@ -21,7 +29,6 @@ graph LR
     Timer(["⏱ Timer"])
     FrontSensor(["📡 Front Sensor"])
     LeftSensor(["📡 Left Sensor"])
-    RightSensor(["📡 Right Sensor"])
     DustSensor(["📡 Dust Sensor"])
 
     UC01("UC-01\nStart Cleaning Session")
@@ -42,7 +49,6 @@ graph LR
     FrontSensor --> UC03
     FrontSensor --> UC04
     LeftSensor --> UC04
-    RightSensor --> UC04
     DustSensor --> UC05
 ```
 
@@ -86,7 +92,7 @@ graph LR
 **Main Success Scenario (no obstacles, no dust):**
 
 1. Timer fires a Tick.
-2. System reads Left Sensor, Right Sensor, Dust Sensor states.
+2. System reads Left Sensor and Dust Sensor states.
 3. All sensors report False (no obstacles, no dust).
 4. System maintains Motor command: Forward.
 5. System maintains Cleaner command: On.
@@ -96,7 +102,7 @@ graph LR
 | Condition | Extension |
 |---|---|
 | Front Sensor fires interrupt (obstacle ahead) | → UC-03: Avoid Front Obstacle |
-| Front Sensor = True AND Left Sensor = True AND Right Sensor = True | → UC-04: Escape Surrounded State |
+| Front blocked AND Left blocked AND right side (probed by rotating) blocked | → UC-04: Escape Surrounded State |
 | Dust Sensor = True | → UC-05: Intensify Cleaning |
 
 ---
@@ -109,22 +115,21 @@ graph LR
 | **Name** | Avoid Front Obstacle |
 | **Primary Actor** | Front Sensor |
 | **Brief Description** | When a front obstacle is detected (and the RVC is not fully surrounded), the RVC stops, turns to an open side, and resumes forward navigation. |
-| **Preconditions** | Cleaning session is active. Front Sensor fires True. Left or Right side is not blocked. |
+| **Preconditions** | Cleaning session is active. Front Sensor fires True. The left side, or the right side (probed by rotating), is open. |
 | **Postconditions** | RVC is moving forward on a new heading, cleaner remains On. |
 
 **Main Success Scenario:**
 
 1. Front Sensor triggers interrupt with True.
 2. System commands Motor: Stop.
-3. System reads Left Sensor and Right Sensor.
-4. At least one side is open (Left = False OR Right = False).
-5. System selects an open side (Left or Right) and commands Motor: Turn to that side.
-6. System commands Motor: Forward.
-7. Cleaner remains On.
+3. System reads the Left Sensor. If the left side is open, it turns left.
+4. If the left side is blocked, the system rotates right and reads the Front Sensor to check the right side.
+5. If the right side is open, the RVC (now facing it) resumes forward.
+6. Cleaner remains On.
 
 **Alternative Flow — Both sides also blocked:**
 
-- Step 4: Left = True AND Right = True → transfer to UC-04.
+- Step 4: Left blocked AND right side (probed) blocked → transfer to UC-04.
 
 ---
 
@@ -134,16 +139,16 @@ graph LR
 |---|---|
 | **ID** | UC-04 |
 | **Name** | Escape Surrounded State |
-| **Primary Actor** | Front Sensor, Left Sensor, Right Sensor |
-| **Brief Description** | When obstacles are detected on all three sides (front, left, right), the RVC reverses, turns to an available side, and resumes. |
-| **Preconditions** | Cleaning session is active. Front = True AND Left = True AND Right = True. |
+| **Primary Actor** | Front Sensor, Left Sensor |
+| **Brief Description** | When obstacles block the front and left sides and the right side (probed by rotating the front sensor) is also blocked, the RVC reverses one cell, turns, and resumes. |
+| **Preconditions** | Cleaning session is active. Front = True AND Left = True AND the right side (probed) = True. |
 | **Postconditions** | RVC is moving forward on a new heading, cleaner remains On. |
 
 **Main Success Scenario:**
 
-1. System detects Front = True AND Left = True AND Right = True.
-2. System commands Motor: Backward.
-3. System selects a turn direction (Left or Right).
+1. System detects Front blocked, Left blocked, and the right side (probed by rotating) blocked.
+2. System commands Motor: Backward (one cell).
+3. System selects a turn direction.
 4. System commands Motor: Turn to selected direction.
 5. System commands Motor: Forward.
 6. Cleaner remains On.

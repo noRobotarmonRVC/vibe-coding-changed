@@ -25,7 +25,6 @@ public:
     // Manual sensor injection (overrides grid auto-detection for that tick)
     void injectFront(bool reading);
     void injectLeft(bool reading);
-    void injectRight(bool reading);
     void injectDust(bool reading);
 
     // Environment setup
@@ -57,12 +56,12 @@ private:
     Position _pos;
     Heading  _heading;
     size_t   _motor_log_applied = 0;
+    bool     _prev_front_blocked = false;
     std::set<std::pair<int,int>> _obstacles;
     std::set<std::pair<int,int>> _dust_cells;
 
     SimulatedSensor           _front;
     SimulatedSensor           _left;
-    SimulatedSensor           _right;
     SimulatedSensor           _dust;
     SimulatedMotor            _motor;
     SimulatedCleaner          _cleaner;

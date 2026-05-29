@@ -1,5 +1,14 @@
 # SW Architecture Document
 
+## 개정 이력
+
+| 버전 | 날짜 | 변경 내용 |
+|---|---|---|
+| 1.0 | 2026-05-21 | 최초 작성 |
+| 1.1 | 2026-05-29 | HAL 다이어그램에서 RightSensor 제외; AD-02 갱신(폴링할 우측 센서 없음); AD-11(우측 탐지)·AD-12(멀티틱 회피) 추가 |
+
+---
+
 ## 1. 개요
 
 RVC Control SW는 엄격한 의존성 규칙을 가진 **계층형 아키텍처**를 따른다: 상위 계층은 하위 계층에 의존하며, 하위 계층은 절대 상위 계층에 의존하지 않는다. 모든 계층 간 통신은 인터페이스를 사용하여 시스템의 테스트 가능성과 확장성을 유지한다.
@@ -22,8 +31,9 @@ RVC Control SW는 엄격한 의존성 규칙을 가진 **계층형 아키텍처*
 │   INavigationStrategy                             │
 ├──────────────────────────────────────────────────┤
 │        Hardware Abstraction Layer (HAL)           │
-│   FrontSensor  LeftSensor  RightSensor            │
-│   DustSensor  (Motor/Cleaner adapters)            │
+│   FrontSensor  LeftSensor  DustSensor             │
+│   (RightSensor 제거 — AD-11 참조)                 │
+│   (Motor/Cleaner adapters)                        │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -54,8 +64,8 @@ RVC Control SW는 엄격한 의존성 규칙을 가진 **계층형 아키텍처*
 │           │                                                  │
 │    ┌──────┴───────────────────────────────────┐             │
 │    │               HAL                         │             │
-│    │  FrontSensor LeftSensor RightSensor       │             │
-│    │  DustSensor  MotorAdapter CleanerAdapter  │             │
+│    │  FrontSensor LeftSensor DustSensor        │             │
+│    │  MotorAdapter CleanerAdapter              │             │
 │    └──────────────────────────────────────────┘             │
 └─────────────────────────────────────────────────────────────┘
          ▲                               ▼
@@ -78,7 +88,9 @@ RVC Control SW는 엄격한 의존성 규칙을 가진 **계층형 아키텍처*
 
 ### AD-02: 센서의 Interrupt vs. Polling
 
-**결정:** `FrontSensor`는 interrupt 방식(`onInterrupt()`가 플래그를 설정하고 controller가 `onFrontObstacleDetected()`를 호출); Left, Right, Dust 센서는 매 Tick마다 polling.
+**결정:** `FrontSensor`는 interrupt 방식(`onInterrupt()`가 플래그를 설정하고 controller가 `onFrontObstacleDetected()`를 호출); Left, Dust 센서는 매 Tick마다 polling.
+
+> 2026-05-29 갱신(AD-11): 우측 센서가 제거되었다. 우측은 우회전 후 전방 센서를 재활용해 탐지하므로 더 이상 polling할 우측 센서가 없다.
 
 **근거:** FUNC-01은 전방 장애물에 즉각 응답을 요구한다. FUNC-02는 나머지 센서를 주기적으로 정의한다. 두 모델을 혼용하려면 controller가 두 가지 신호 전달 경로를 모두 처리해야 한다.
 
@@ -116,6 +128,22 @@ RVC Control SW는 엄격한 의존성 규칙을 가진 **계층형 아키텍처*
 
 ---
 
+### AD-11: 우측 센서 제거 → 전방 센서 재활용으로 우측 탐지 (2026-05-29)
+
+**결정:** HW에서 우측 센서가 제거되었다. 전방+좌측이 모두 막히면 컨트롤러가 우회전하여 전방 센서로 우측을 읽는다.
+
+**결과:** `SensorData.is_right_blocked` 제거, `RvcController`가 우측 센서를 더 이상 보유하지 않는다. 상세는 `docs/decisions/2026-05-29-maintenance-decisions-kr.md` 참조.
+
+---
+
+### AD-12: 회피/탈출의 멀티틱 처리 (2026-05-29)
+
+**결정:** 회피·탈출을 인터럽트에서 원자적으로 처리하지 않고(AD-03의 원자적 처리를 대체) `onTick()`마다 한 단계씩 진행한다. 인터럽트는 STOP만 발행한다.
+
+**결과:** 틱당 이동 명령은 정확히 하나(F-06: 후진이 한 틱에 여러 칸 이동하던 결함 해결). 새 상태 `CHECKING_RIGHT` 추가. 상세는 `docs/decisions/2026-05-29-maintenance-decisions-kr.md` 참조.
+
+---
+
 ## 5. 소스 디렉터리 구조
 
 ```
@@ -135,7 +163,7 @@ src/
 ├── hal/
 │   ├── FrontSensor.hpp / .cpp
 │   ├── LeftSensor.hpp / .cpp
-│   ├── RightSensor.hpp / .cpp
+│   ├── RightSensor.hpp / .cpp   (미사용, 보존 — AD-11)
 │   └── DustSensor.hpp / .cpp
 └── app/
     ├── RvcController.hpp / .cpp

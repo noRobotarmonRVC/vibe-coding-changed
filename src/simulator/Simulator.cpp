@@ -6,7 +6,7 @@ Simulator::Simulator(int grid_width, int grid_height,
     , _grid_height(grid_height)
     , _pos(start)
     , _heading(start_heading)
-    , _controller(&_front, &_left, &_right, &_dust, &_motor, &_cleaner, &_nav) {}
+    , _controller(&_front, &_left, &_dust, &_motor, &_cleaner, &_nav) {}
 
 void Simulator::start() {
     _controller.start();
@@ -19,9 +19,13 @@ void Simulator::stop() {
 }
 
 void Simulator::tick() {
-    // Auto-inject left/right sensors from the grid before the control cycle
+    // Auto-inject left sensor from the grid (right sensor no longer exists)
     _left.inject(isBlocked(adjacentCell(_pos, turnLeft(_heading))));
-    _right.inject(isBlocked(adjacentCell(_pos, turnRight(_heading))));
+
+    // Front sensor is also polled: the controller reuses it to probe the right
+    // side (after rotating right) since there is no dedicated right sensor.
+    bool front_blocked = isBlocked(adjacentCell(_pos, _heading));
+    _front.inject(front_blocked);
 
     // Auto-inject dust sensor if robot is on a dust cell, then consume it
     auto dust_key = std::make_pair(_pos.x, _pos.y);
@@ -32,12 +36,14 @@ void Simulator::tick() {
         _dust.inject(false);
     }
 
-    // Front sensor is interrupt-driven: trigger handler if blocked, else run tick
-    if (isBlocked(adjacentCell(_pos, _heading))) {
+    // Front obstacle is an interrupt: fire only on the rising edge (clear ->
+    // blocked). Multi-tick avoidance/escape then advances via onTick().
+    if (front_blocked && !_prev_front_blocked) {
         _controller.onFrontObstacleDetected();
     } else {
         _controller.onTick();
     }
+    _prev_front_blocked = front_blocked;
     applyPendingMotorCommands();
 }
 
@@ -48,7 +54,6 @@ void Simulator::triggerFrontObstacle() {
 
 void Simulator::injectFront(bool reading) { _front.inject(reading); }
 void Simulator::injectLeft(bool reading)  { _left.inject(reading); }
-void Simulator::injectRight(bool reading) { _right.inject(reading); }
 void Simulator::injectDust(bool reading)  { _dust.inject(reading); }
 
 void Simulator::placeObstacle(int x, int y) { _obstacles.insert({x, y}); }

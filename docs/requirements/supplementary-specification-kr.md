@@ -1,5 +1,14 @@
 # Supplementary Specification
 
+## 개정 이력
+
+| 버전 | 날짜 | 변경 내용 |
+|---|---|---|
+| 1.0 | 2026-05-21 | 최초 작성 |
+| 1.1 | 2026-05-29 | FUNC-02·PERF-01의 주기적 폴링 목록에서 우측 센서 제거 (우측은 전방 센서로 탐지 — AD-11) |
+
+---
+
 이 문서는 Use-Case Model에서 표현되지 않은 시스템 요구사항을 수록한다. FURPS+ 분류 체계를 따른다.
 
 ---
@@ -11,7 +20,7 @@
 | ID | 요구사항 |
 |---|---|
 | FUNC-01 | 시스템은 Front Sensor 입력을 interrupt로 처리해야 한다 (polling 불가). 전방 장애물에 즉각 응답을 보장한다. |
-| FUNC-02 | Left, Right, Dust Sensor 입력은 매 Timer Tick마다 평가된다 (주기적 polling). |
+| FUNC-02 | Left, Dust Sensor 입력은 매 Timer Tick마다 평가된다 (주기적 polling). 우측은 전용 센서가 없으며, 회피 중 우회전 후 전방 센서로 확인한다 (AD-11). |
 | FUNC-03 | Motor direction 명령은 상호 배타적이다; 한 번에 하나의 방향만 활성화된다. |
 | FUNC-04 | Cleaner 전력 상태는 상호 배타적이다: Off, On, 또는 Power Up. |
 
@@ -37,7 +46,7 @@
 
 | ID | 요구사항 |
 |---|---|
-| PERF-01 | 주기적 센서 평가(Left, Right, Dust)는 단일 Tick 간격 내에 완료되어야 한다. |
+| PERF-01 | 주기적 센서 평가(Left, Dust)는 단일 Tick 간격 내에 완료되어야 한다. |
 | PERF-02 | 강화 청소 지속 시간(UC-05)은 인라인 하드코딩이 아닌 시스템 상수로 설정 가능해야 한다. |
 
 ---

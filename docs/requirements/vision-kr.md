@@ -1,5 +1,14 @@
 # Vision
 
+## 개정 이력
+
+| 버전 | 날짜 | 변경 내용 |
+|---|---|---|
+| 1.0 | 2026-05-21 | 최초 작성 |
+| 1.1 | 2026-05-29 | 시스템 경계에서 Right Sensor 입력 제거 (우측은 전방 센서를 회전·재활용해 탐지 — AD-11) |
+
+---
+
 ## 1. 소개
 
 이 문서는 RVC(Robot Vacuum Cleaner) Control SW의 고수준 목표, 이해관계자, 제품 범위를 정의한다. Unified Process의 모든 후속 단계에 대한 의도의 공식 진술서 역할을 한다.
@@ -38,8 +47,7 @@ SW는 HW를 전기 수준에서 직접 제어하지 **않는다**. 시스템 인
 ```
                         ┌─────────────────────┐
  Front Sensor ─────────>│                     │──────────> Motor (Direction)
- Left Sensor  ─────────>│   RVC Control SW    │
- Right Sensor ─────────>│                     │──────────> Cleaner (Power)
+ Left Sensor  ─────────>│   RVC Control SW    │──────────> Cleaner (Power)
  Dust Sensor  ─────────>│                     │
  Timer (Tick) ─────────>│                     │
                         └─────────────────────┘

@@ -1,5 +1,14 @@
 # Glossary
 
+## 개정 이력
+
+| 버전 | 날짜 | 변경 내용 |
+|---|---|---|
+| 1.0 | 2026-05-21 | 최초 작성 |
+| 1.1 | 2026-05-29 | **Right Sensor** 용어 삭제; **Obstacle**·**Surrounded State** 정의에서 우측 센서 참조 제거 (우측은 전방 센서로 탐지 — AD-11) |
+
+---
+
 용어는 알파벳 순으로 나열된다. 약어는 첫 사용 시 풀어서 표기한다.
 
 ---
@@ -16,14 +25,13 @@
 | **Left Sensor** | RVC 좌측에 장애물이 감지되면 True, 그렇지 않으면 False를 보고하는 주기적(periodic) 센서. |
 | **Motor** | RVC 이동을 구동하는 HW 컴포넌트. Direction Command를 수신한다. |
 | **OOAD** | Object-Oriented Analysis and Design — 이 프로젝트에서 사용하는 개발 방법론. |
-| **Obstacle** | Front, Left, Right 센서가 감지하여 RVC의 경로를 막는 물리적 물체. |
+| **Obstacle** | RVC의 경로를 막는 물리적 물체. Front, Left 센서가 감지(우측은 우회전 후 전방 센서로 확인). |
 | **Periodic** | 센서 읽기 모드의 일종으로, Tick 간격마다 한 번 센서 상태를 샘플링한다. |
 | **Power Up** | 먼지가 감지될 때 사용하는, 정상 On 수준 이상으로 청소 강도를 높이는 Cleaner 명령. |
-| **Right Sensor** | RVC 우측에 장애물이 감지되면 True, 그렇지 않으면 False를 보고하는 주기적(periodic) 센서. |
 | **RVC** | Robot Vacuum Cleaner — 이 프로젝트에서 Control SW를 개발하는 자율 가정용 청소 기기. |
 | **Safe State** | 시스템이 불확정 조건을 만났을 때의 폴백 상태: Motor 정지, Cleaner Off. |
 | **Simulator** | 통합 테스트 목적으로 RVC HW 환경을 에뮬레이션하는 SW 컴포넌트. |
-| **Surrounded State** | Front Sensor = True AND Left Sensor = True AND Right Sensor = True인 상태로, RVC가 회전 전에 후진해야 한다. |
+| **Surrounded State** | 전방·좌측이 차단되고, 우회전 후 전방 센서로 확인한 우측도 차단된 상태로, RVC가 회전 전에 후진해야 한다. |
 | **Tick** | RVC Control SW의 메인 제어 루프를 구동하는 Digital Clock의 주기적 신호. |
 | **Timer** | 고정 간격으로 Tick 신호를 생성하는 Digital Clock 서브시스템. |
 | **TDD** | Test-Driven Development — 구현 코드 이전에 테스트를 먼저 작성한다. |

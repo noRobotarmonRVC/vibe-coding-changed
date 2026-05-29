@@ -1,5 +1,14 @@
 # System Operation Interface (한국어)
 
+## 개정 이력
+
+| 버전 | 날짜 | 변경 내용 |
+|---|---|---|
+| 1.0 | 2026-05-21 | 최초 작성 |
+| 1.1 | 2026-05-29 | `tick()`/`onFrontObstacleDetected()`에서 우측 센서 읽기 제거; `onFrontObstacleDetected()`는 STOP + AVOIDING_OBSTACLE 진입만; 결정 로직을 우측 회전 탐지 멀티틱으로 재작성 (AD-11, AD-12) |
+
+---
+
 | «interface» RVCSystem | `startCleaning()` · `tick()` · `onFrontObstacleDetected()` · `stopCleaning()` |
 |---|---|
 
@@ -44,7 +53,7 @@ System Operation은 Use-Case 시나리오의 시스템 이벤트에서 도출된
 | **오퍼레이션** | `tick()` |
 | **관련 UC** | UC-02, UC-03, UC-04, UC-05 |
 | **트리거 액터** | Timer |
-| **설명** | RVC가 활성 상태일 때 모든 센서 폴링과 navigation 결정을 구동하는 주기적 신호. 매 tick마다 Left, Right, Dust 센서를 읽고 다음 동작을 결정한다. |
+| **설명** | RVC가 활성 상태일 때 모든 센서 폴링과 navigation 결정을 구동하는 주기적 신호. 매 tick마다 Left, Dust 센서를 읽고 회피/탈출 상태머신을 한 단계 진행한다. 우측은 필요 시 우회전 후 전방 센서로 확인한다. |
 | **사전 조건** | RVC가 활성 상태다 (CLEANING, AVOIDING_OBSTACLE, ESCAPING, INTENSIFYING 중 하나). |
 | **사후 조건** | 현재 센서 값에 따라 Motor 방향과 Cleaner 상태가 업데이트된다. 아래 표에 따라 상태가 전이될 수 있다. |
 
@@ -53,8 +62,8 @@ System Operation은 Use-Case 시나리오의 시스템 이벤트에서 도출된
 | 센서 읽기 | 전이 상태 | Motor | Cleaner |
 |---|---|---|---|
 | 장애물 없음, 먼지 없음 | CLEANING | FORWARD | ON |
-| Front = True, Left 또는 Right 개방 | AVOIDING_OBSTACLE | STOP → TURN → FORWARD | ON |
-| Front = True, Left = True, Right = True | ESCAPING | BACKWARD → TURN → FORWARD | ON |
+| 전방 차단, 좌측 또는 우측(확인) 개방 | AVOIDING_OBSTACLE → CHECKING_RIGHT → CLEANING | 틱당 한 단계 (회전 후 전진) | ON |
+| 전방 차단, 좌측 차단, 우측(확인) 차단 | ESCAPING | BACKWARD (틱당 한 칸) 후 재평가 | ON |
 | Dust = True | INTENSIFYING | FORWARD | POWER_UP |
 | 강화 지속 시간 경과 | CLEANING | FORWARD | ON |
 
@@ -69,17 +78,20 @@ System Operation은 Use-Case 시나리오의 시스템 이벤트에서 도출된
 | **오퍼레이션** | `onFrontObstacleDetected()` |
 | **관련 UC** | UC-03, UC-04 |
 | **트리거 액터** | Front Sensor (interrupt 방식) |
-| **설명** | 전방 장애물 감지 시 발생하는 interrupt 기반 알림. `tick()`과 달리 비동기적으로, 폴링 주기가 아닌 감지 즉시 발생한다. |
-| **사전 조건** | RVC가 CLEANING 또는 AVOIDING_OBSTACLE 상태다. |
-| **사후 조건** | Motor 명령 = STOP. 시스템이 Left/Right 센서를 읽고 다음 상태(AVOIDING_OBSTACLE 또는 ESCAPING)를 결정한다. |
+| **설명** | 전방 장애물 감지 시 발생하는 interrupt 기반 알림. `tick()`과 달리 비동기적으로 감지 즉시 발생한다. STOP만 발행하고 AVOIDING_OBSTACLE에 진입하며, 실제 회피/탈출은 이후 tick들에서 진행된다 (AD-12). |
+| **사전 조건** | RVC가 CLEANING 상태다. |
+| **사후 조건** | Motor 명령 = STOP; 상태 = AVOIDING_OBSTACLE. |
 
-**결정 로직:**
+**결정 로직 (`onTick()`마다 한 단계 진행):**
 
-| Left Sensor | Right Sensor | 전이 상태 |
-|---|---|---|
-| False (개방) | 무관 | AVOIDING_OBSTACLE — 좌회전 |
-| 무관 | False (개방) | AVOIDING_OBSTACLE — 우회전 |
-| True | True | ESCAPING |
+| 단계 (상태) | 조건 | 동작 | 다음 상태 |
+|---|---|---|---|
+| 인터럽트 | 전방 차단 | STOP | AVOIDING_OBSTACLE |
+| AVOIDING_OBSTACLE | 좌측 개방 | 좌회전 | CLEANING |
+| AVOIDING_OBSTACLE | 좌측 차단 | 우회전(우측 엿보기) | CHECKING_RIGHT |
+| CHECKING_RIGHT | 우측 개방 | 전진 재개 | CLEANING |
+| CHECKING_RIGHT | 우측 차단 | 원래 방향 복귀 | ESCAPING |
+| ESCAPING | — | 한 칸 후진 | AVOIDING_OBSTACLE |
 
 **참조:** UC-03 Step 1–3, UC-03 대안 흐름, UC-04 Step 1
 
@@ -130,9 +142,9 @@ User       Front Sensor     RVC System       Timer
  |               |               |  Motor: FORWARD
  |               |               |               |
  |               |--onFrontObstacleDetected()--->|
- |               |               |  Motor: STOP
- |               |               |  [Left/Right 읽기]
- |               |               |  Motor: TURN → FORWARD
+ |               |               |  Motor: STOP (AVOIDING_OBSTACLE 진입)
+ |               |               |  [onTick: Left 읽기; 우회전으로 Right 엿보기]
+ |               |               |  Motor: TURN → FORWARD (이후 tick들에서)
  |               |               |               |
  |               |               |<----tick()----|
  |               |               |  (navigation 재개)

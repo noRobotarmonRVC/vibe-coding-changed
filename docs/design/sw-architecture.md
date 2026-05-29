@@ -1,5 +1,14 @@
 # SW Architecture Document
 
+## Revision History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0 | 2026-05-21 | Initial draft |
+| 1.1 | 2026-05-29 | Removed RightSensor from the HAL diagrams; updated AD-02 (no right sensor to poll); added AD-11 (right-probe) and AD-12 (multi-tick avoidance) |
+
+---
+
 ## 1. Overview
 
 The RVC Control SW follows a **layered architecture** with a strict dependency rule: upper layers depend on lower layers; lower layers never depend on upper layers. All cross-layer communication uses interfaces, keeping the system testable and extensible.
@@ -22,8 +31,9 @@ The RVC Control SW follows a **layered architecture** with a strict dependency r
 │   INavigationStrategy                             │
 ├──────────────────────────────────────────────────┤
 │        Hardware Abstraction Layer (HAL)           │
-│   FrontSensor  LeftSensor  RightSensor            │
-│   DustSensor  (Motor/Cleaner adapters)            │
+│   FrontSensor  LeftSensor  DustSensor             │
+│   (RightSensor retired — see AD-11)               │
+│   (Motor/Cleaner adapters)                        │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -54,8 +64,8 @@ The RVC Control SW follows a **layered architecture** with a strict dependency r
 │           │                                                  │
 │    ┌──────┴───────────────────────────────────┐             │
 │    │               HAL                         │             │
-│    │  FrontSensor LeftSensor RightSensor       │             │
-│    │  DustSensor  MotorAdapter CleanerAdapter  │             │
+│    │  FrontSensor LeftSensor DustSensor        │             │
+│    │  MotorAdapter CleanerAdapter              │             │
 │    └──────────────────────────────────────────┘             │
 └─────────────────────────────────────────────────────────────┘
          ▲                               ▼
@@ -78,7 +88,9 @@ The RVC Control SW follows a **layered architecture** with a strict dependency r
 
 ### AD-02: Interrupt vs. Polling for Sensors
 
-**Decision:** `FrontSensor` is interrupt-driven (`onInterrupt()` sets a flag, `onFrontObstacleDetected()` is called by the controller); Left, Right, and Dust sensors are polled each Tick.
+**Decision:** `FrontSensor` is interrupt-driven (`onInterrupt()` sets a flag, `onFrontObstacleDetected()` is called by the controller); Left and Dust sensors are polled each Tick.
+
+> Updated 2026-05-29 (AD-11): the right sensor was removed. The right side is now probed by rotating right and reusing the front sensor, so there is no longer a right sensor to poll.
 
 **Rationale:** FUNC-01 requires immediate front-obstacle response. FUNC-02 defines the other sensors as periodic. Mixing both models requires the controller to handle both signal delivery paths.
 
@@ -116,6 +128,22 @@ The RVC Control SW follows a **layered architecture** with a strict dependency r
 
 ---
 
+### AD-11: Right Sensor Removed → Probe Right by Reusing the Front Sensor (2026-05-29)
+
+**Decision:** The right sensor was removed from the HW. When front and left are both blocked, the controller rotates right and reads the right side via the front sensor.
+
+**Consequence:** `SensorData.is_right_blocked` is gone; `RvcController` no longer holds a right sensor. See `docs/decisions/2026-05-29-maintenance-decisions.md` for detail.
+
+---
+
+### AD-12: Multi-Tick Avoidance/Escape (2026-05-29)
+
+**Decision:** Avoidance and escape advance one step per `onTick()` instead of being handled atomically in the interrupt (supersedes the atomic handling noted in AD-03). The interrupt only issues STOP.
+
+**Consequence:** Exactly one motion command per tick (fixes F-06: reverse moving several cells per tick). New state `CHECKING_RIGHT`. See `docs/decisions/2026-05-29-maintenance-decisions.md`.
+
+---
+
 ## 5. Source Directory Layout
 
 ```
@@ -135,7 +163,7 @@ src/
 ├── hal/
 │   ├── FrontSensor.hpp / .cpp
 │   ├── LeftSensor.hpp / .cpp
-│   ├── RightSensor.hpp / .cpp
+│   ├── RightSensor.hpp / .cpp   (retired, unused — AD-11)
 │   └── DustSensor.hpp / .cpp
 └── app/
     ├── RvcController.hpp / .cpp

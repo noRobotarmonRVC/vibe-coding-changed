@@ -1,5 +1,14 @@
 # Supplementary Specification
 
+## Revision History
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0 | 2026-05-21 | Initial draft |
+| 1.1 | 2026-05-29 | Removed the right sensor from FUNC-02 and PERF-01 periodic-polling lists (right side now probed via the front sensor — AD-11) |
+
+---
+
 This document captures system requirements not expressed in the Use-Case Model. It follows the FURPS+ classification.
 
 ---
@@ -11,7 +20,7 @@ Functional requirements are fully covered by the Use-Case Model (`use-case-model
 | ID | Requirement |
 |---|---|
 | FUNC-01 | The system must process Front Sensor input as an interrupt (not polled), ensuring immediate response to front obstacles. |
-| FUNC-02 | Left, Right, and Dust Sensor inputs are evaluated on each Timer Tick (periodic polling). |
+| FUNC-02 | Left and Dust Sensor inputs are evaluated on each Timer Tick (periodic polling). The right side has no dedicated sensor; it is probed by rotating right and reading the front sensor during avoidance (AD-11). |
 | FUNC-03 | Motor direction commands are mutually exclusive; only one direction is active at a time. |
 | FUNC-04 | Cleaner power states are mutually exclusive: Off, On, or Power Up. |
 
@@ -37,7 +46,7 @@ Not applicable. The RVC Control SW has no direct user interface; user interactio
 
 | ID | Requirement |
 |---|---|
-| PERF-01 | Periodic sensor evaluation (Left, Right, Dust) must complete within a single Tick interval. |
+| PERF-01 | Periodic sensor evaluation (Left, Dust) must complete within a single Tick interval. |
 | PERF-02 | The intensified cleaning duration (UC-05) must be configurable as a system constant, not hardcoded inline. |
 
 ---
