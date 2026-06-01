@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cstdlib>
 #include "simulator/Simulator.hpp"
 
 // [변경] Simulator tests trace Right Scan injection and one-cell-per-tick escape.
@@ -76,6 +77,38 @@ TEST(SimulatorTest, SurroundedEscapeMovesOneCellPerTick) {
     EXPECT_EQ(sim.lastDirection(), Direction::FORWARD);
     EXPECT_EQ(sim.pos().x, after_backward.x);
     EXPECT_EQ(sim.pos().y, after_backward.y - 1);
+}
+
+TEST(SimulatorTest, NeverMovesMoreThanOneCellPerTickDuringSurroundedEscape) {
+    Simulator sim(20, 12, {5, 5}, Heading::EAST);
+    sim.placeObstacle(6, 5);
+    sim.placeObstacle(5, 4);
+    sim.placeObstacle(5, 6);
+    sim.start();
+
+    Position prev = sim.pos();
+    for (int i = 0; i < 8; ++i) {
+        sim.tick();
+        const Position now = sim.pos();
+        const int distance = std::abs(now.x - prev.x) + std::abs(now.y - prev.y);
+        EXPECT_LE(distance, 1);
+        prev = now;
+    }
+}
+
+TEST(SimulatorTest, BacksUpAlongOriginalHeadingAfterRightScanRestore) {
+    Simulator sim(20, 12, {5, 5}, Heading::EAST);
+    sim.placeObstacle(6, 5);
+    sim.placeObstacle(5, 4);
+    sim.placeObstacle(5, 6);
+    sim.start();
+
+    const Position start = sim.pos();
+    sim.tick();  // obstacle event: stop, right scan, left restore
+    sim.tick();  // escape step 0: backward
+
+    EXPECT_LT(sim.pos().x, start.x);
+    EXPECT_EQ(sim.pos().y, start.y);
 }
 
 TEST(SimulatorTest, StopHaltsMotorAndCleaner) {
