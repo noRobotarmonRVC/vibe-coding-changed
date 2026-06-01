@@ -1,5 +1,18 @@
 # Design Model
 
+## Design Change Trace - 2026-05-29
+
+### [추가]
+- Added Right Scan as the source of right-side obstacle information.
+- Added `_escape_step` to represent tick-by-tick ESCAPING progress.
+
+### [삭제]
+- Removed dedicated RightSensor from the active `RvcController` dependency model.
+
+### [변경]
+- Changed `SensorData::is_right_blocked` to mean Right Scan blocked.
+- Changed surrounded escape sequencing from one event to multiple ticks.
+
 The Design Model defines the software structure of the RVC Control SW — classes, interfaces, responsibilities, and key collaborations. All naming follows the project code conventions.
 
 ---
@@ -24,7 +37,7 @@ enum class RvcState {
     IDLE,
     CLEANING,           // normal forward navigation
     AVOIDING_OBSTACLE,  // front blocked, at least one side open
-    ESCAPING,           // surrounded (front + left + right blocked)
+    ESCAPING,           // surrounded (front + left + right scan blocked)
     INTENSIFYING        // dust detected, power up active
 };
 ```
@@ -39,7 +52,7 @@ ISensor
 ─────────────────────────────
 + detect() : bool   {pure virtual}
 ```
-Implemented by: `FrontSensor`, `LeftSensor`, `RightSensor`, `DustSensor`.
+Implemented by: `FrontSensor`, `LeftSensor`, and `DustSensor`. Right-side obstacle checks reuse `FrontSensor` through a right-scan maneuver.
 
 ### `IMotorController`
 ```
@@ -75,7 +88,7 @@ SensorData
 ─────────────────────────────
 + is_front_blocked : bool
 + is_left_blocked  : bool
-+ is_right_blocked : bool
++ is_right_blocked : bool  // result of right-side front-sensor scan
 + has_dust         : bool
 ```
 
@@ -93,7 +106,7 @@ FrontSensor
 + onInterrupt() : void    ← called by interrupt handler
 ```
 
-### `LeftSensor : ISensor`, `RightSensor : ISensor`, `DustSensor : ISensor`
+### `LeftSensor : ISensor`, `DustSensor : ISensor`
 ```
 [Sensor]
 ─────────────────────────────
@@ -112,7 +125,7 @@ DefaultNavigationStrategy
 ```
 
 Rules encoded (priority order):
-1. Front + Left + Right blocked → BACKWARD (caller transitions to ESCAPING, then turns)
+1. Front + Left + Right Scan blocked → BACKWARD (caller transitions to ESCAPING, then advances one command per tick)
 2. Front blocked, side open → LEFT or RIGHT (turn to open side)
 3. No obstacles → FORWARD
 
@@ -124,13 +137,13 @@ RvcController
 ─────────────────────────────────────────────────────
 - _front_sensor      : ISensor*
 - _left_sensor       : ISensor*
-- _right_sensor      : ISensor*
 - _dust_sensor       : ISensor*
 - _motor             : IMotorController*
 - _cleaner           : ICleanerController*
 - _nav_strategy      : INavigationStrategy*
 - _state             : RvcState
 - _intensify_ticks   : int       ← countdown for PowerUp duration
+- _escape_step       : int       ← tick-by-tick escape progress
 ─────────────────────────────────────────────────────
 + start() : void
 + stop()  : void
@@ -150,7 +163,7 @@ RvcController
              │        │        │        │        │
          ISensor  ISensor  ISensor  ISensor  IMotorController  ICleanerController  INavigationStrategy
              │        │        │        │
-       FrontSensor  LeftSensor  RightSensor  DustSensor
+       FrontSensor  LeftSensor  DustSensor
 
     INavigationStrategy
           │

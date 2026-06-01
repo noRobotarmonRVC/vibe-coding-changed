@@ -1,36 +1,39 @@
-# Simulator / UI 실패 및 해결 — 2026-05-21
+# Simulator Failures and Resolutions - 2026-05-21
 
-Construction 단계 2차 이터레이션에서 Simulator 및 UI 컴포넌트에서 발생한 실패. RVC Control SW 실패와 별개입니다.
+Simulator와 console UI 구현 중 발견한 문제를 기록한다.
 
 ---
 
-## F-05: 터미널 화면/입력 충돌 ("밀림 현상")
+## F-07: Background Rendering이 입력 줄을 깨뜨림
 
-### 무엇이 실패했는가
-백그라운드 틱 스레드 추가 후, 사용자가 타이핑하면 터미널 화면이 깨졌다. 입력한 문자가 그리드 안에 나타나고 커서가 예측 불가능한 위치로 이동했다. 화면을 사용할 수 없었다.
+**문제**  
+tick thread가 grid를 다시 그리는 동안 사용자가 입력 중인 command line이 깨질 수 있었다.
 
-### 근본 원인
-두 개의 독립적인 쓰기가 동일한 터미널에서 경쟁했다:
+**원인**  
+rendering과 input이 같은 console output을 공유했지만, cursor 위치와 입력 buffer가 별도로 관리되지 않았다.
 
-1. 틱 스레드가 `std::cout`으로 그리드 렌더링 (`\033[H`로 커서 홈 이동 포함).
-2. 터미널 커널이 타이핑한 문자를 현재 커서 위치에 echo로 출력.
+**해결**  
+raw input mode를 사용하고, 입력 buffer를 직접 관리하며, rendering 후 고정된 input row를 다시 그리도록 변경했다.
 
-틱 스레드가 렌더링 도중 커서를 이동시키기 때문에, 사용자가 타이핑한 문자가 그 순간 커서가 있던 위치에 출력됐다.
+---
 
-### 왜 놓쳤는가
-단일 스레드 스크립트 데모에서는 렌더링과 입력이 동시에 발생하지 않았다. 멀티스레드 설계로 전환하면서 터미널 커서가 두 스레드가 암묵적으로 수정하는 공유 가변 상태임이 드러났다.
+## F-08: Thread 간 Simulator 접근 경쟁
 
-### 해결책
-**termios 로우 모드**로 전환 (AD-08 참조):
+**문제**  
+tick thread와 input thread가 동시에 simulator 상태를 읽고 쓸 수 있었다.
 
-1. `tcsetattr`로 커널 echo와 줄 버퍼링 비활성화.
-2. 애플리케이션이 입력 문자열 버퍼를 직접 관리.
-3. 매 렌더링 후 커서를 고정 입력 행으로 이동, `> <buffer>` 출력.
-4. 메인 스레드는 한 번에 한 문자씩 읽음 — 커널이 임의 위치에 echo하는 일 없음.
-5. 두 스레드 모두 `sim_mutex`를 보유한 상태에서만 stdout 접근.
+**해결**  
+`std::mutex`로 simulator 접근을 보호했다.
 
-### ncurses를 사용하지 않은 이유
-ncurses가 이상적이지만 프로젝트 규칙이 외부 라이브러리 추가를 금지한다. `termios`는 POSIX libc의 일부로 별도 설치나 CMake 변경 없이 사용 가능하다.
+---
 
-### 예방책
-동시 stdout 쓰기와 사용자 입력을 함께 사용하는 애플리케이션은 터미널 UI 라이브러리를 사용하거나 로우 모드로 명시적으로 제어해야 한다. 기본 라인 디시플린 echo는 스레드 렌더링과 양립할 수 없다.
+## F-09: Platform-specific Terminal API
+
+**문제**  
+Unix의 `termios`는 Windows MSVC 환경에서 제공되지 않는다.
+
+**해결**  
+Unix는 `termios`를 사용하고, Windows는 Console API와 `_getch()`를 사용하도록 분기한다.
+
+**결과**  
+Windows와 Linux 모두에서 전체 CMake 빌드가 가능해졌다.

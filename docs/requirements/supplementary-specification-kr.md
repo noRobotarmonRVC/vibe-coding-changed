@@ -1,63 +1,48 @@
 # Supplementary Specification
 
-이 문서는 Use-Case Model에서 표현되지 않은 시스템 요구사항을 수록한다. FURPS+ 분류 체계를 따른다.
+## SRS Change Trace - 2026-05-29
+
+### [추가]
+- Front Sensor 기반 Right Scan의 정확성 요구사항을 추가한다.
+- ESCAPING 중 tick당 하나의 이동 명령만 적용해야 한다는 simulator 요구사항을 추가한다.
+
+### [삭제]
+- 전용 Right Sensor 하드웨어 의존성을 활성 설계에서 삭제한다.
+
+### [변경]
+- 포위 상태 판단 기준을 Front, Left, Right Sensor에서 Front, Left, Right Scan으로 변경한다.
 
 ---
 
-## 1. Functionality (기능)
+## 1. 품질 속성
 
-기능 요구사항은 Use-Case Model(`use-case-model.md`)에서 완전히 다룬다. 이 섹션은 특정 Use Case에 귀속되지 않는 기능적 제약을 기록한다.
-
-| ID | 요구사항 |
+| 속성 | 요구사항 |
 |---|---|
-| FUNC-01 | 시스템은 Front Sensor 입력을 interrupt로 처리해야 한다 (polling 불가). 전방 장애물에 즉각 응답을 보장한다. |
-| FUNC-02 | Left, Right, Dust Sensor 입력은 매 Timer Tick마다 평가된다 (주기적 polling). |
-| FUNC-03 | Motor direction 명령은 상호 배타적이다; 한 번에 하나의 방향만 활성화된다. |
-| FUNC-04 | Cleaner 전력 상태는 상호 배타적이다: Off, On, 또는 Power Up. |
+| Testability | controller는 mock sensor와 mock actuator로 독립 테스트 가능해야 한다. |
+| Modifiability | navigation strategy는 controller 수정 없이 교체 가능해야 한다. |
+| Portability | core logic과 tests는 Windows와 Linux 환경에서 빌드 가능해야 한다. |
+| Traceability | 요구사항 변경은 문서, 코드, 테스트에 추적 표기를 남겨야 한다. |
 
 ---
 
-## 2. Usability (사용성)
+## 2. 성능과 동작 제약
 
-해당 없음. RVC Control SW는 직접적인 사용자 인터페이스가 없으며, 사용자 상호작용은 시작/정지 명령(UC-01, UC-06)으로 제한된다.
-
----
-
-## 3. Reliability (신뢰성)
-
-| ID | 요구사항 |
-|---|---|
-| REL-01 | 시스템은 하나의 처리 사이클 내에 Front Sensor interrupt에 응답해야 한다. |
-| REL-02 | 시스템은 충돌하는 motor 명령(예: Forward와 Backward 동시)을 발행해서는 안 된다. |
-| REL-03 | 센서 상태를 결정할 수 없으면, 시스템은 safe state(Motor: Stop, Cleaner: Off)로 기본 설정해야 한다. |
+- Front Sensor interrupt는 전방 장애물에 즉시 반응해야 한다.
+- tick 기반 동작은 한 tick에 하나의 실제 이동만 반영해야 한다.
+- ESCAPING은 여러 tick에 나누어 진행되어야 하며, 단일 이벤트에서 여러 칸 이동하면 안 된다.
 
 ---
 
-## 4. Performance (성능)
+## 3. 설계 제약
 
-| ID | 요구사항 |
-|---|---|
-| PERF-01 | 주기적 센서 평가(Left, Right, Dust)는 단일 Tick 간격 내에 완료되어야 한다. |
-| PERF-02 | 강화 청소 지속 시간(UC-05)은 인라인 하드코딩이 아닌 시스템 상수로 설정 가능해야 한다. |
-
----
-
-## 5. Supportability (지원성)
-
-| ID | 요구사항 |
-|---|---|
-| SUPP-01 | 설계는 기존 센서 처리 로직을 수정하지 않고도 추가 센서 타입을 통합할 수 있어야 한다 (Open/Closed Principle). |
-| SUPP-02 | Navigation 로직은 향후 navigation 알고리즘 교체(예: ML 기반)를 위해 센서 읽기 로직과 분리되어야 한다. |
-| SUPP-03 | 시스템은 핵심 제어 로직 변경 없이 향후 모바일 앱 통신을 위한 정의된 인터페이스 경계를 노출해야 한다. |
+- controller는 concrete HAL class가 아니라 interface에 의존한다.
+- RightSensor 파일은 legacy로 남길 수 있으나 active build target에서는 제외한다.
+- 오른쪽 감지는 Right Scan 결과로 표현하고, `SensorData::is_right_blocked`는 이 결과를 담는다.
 
 ---
 
-## 6. Design Constraints (설계 제약, +)
+## 4. 테스트 제약
 
-| ID | 제약 |
-|---|---|
-| DC-01 | 구현 언어: C++17. |
-| DC-02 | 외부 라이브러리나 패키지를 도입할 수 없다. |
-| DC-03 | 모든 모듈은 대응하는 Google Test 단위 테스트를 가져야 한다. |
-| DC-04 | 코드는 프로젝트 정의 규칙 세트로 clang-tidy 정적 분석을 통과해야 한다. |
-| DC-05 | HW 수준 제어(전기 신호, 레지스터 접근)는 범위 밖이며, SW는 추상화된 I/O 이벤트에서만 동작한다. |
+- `RvcControllerTest`는 Right Scan 시 `RIGHT`, front detect, `LEFT` 복구 순서를 검증해야 한다.
+- `SimulatorTest`는 ESCAPING 중 tick마다 한 칸 이하로만 위치가 변하는지 검증해야 한다.
+- 기존 start, stop, dust, normal tick 동작은 유지되어야 한다.

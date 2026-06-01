@@ -1,5 +1,16 @@
 # Vision
 
+## SRS Change Trace - 2026-05-29
+
+### [추가]
+- Added Right Scan as the right-side obstacle detection mechanism inside the system boundary.
+
+### [삭제]
+- Removed the dedicated Right Sensor as an active input actor for this iteration.
+
+### [변경]
+- Changed surrounded obstacle escape to mean Front Sensor, Left Sensor, and Right Scan are all blocked.
+
 ## 1. Introduction
 
 This document defines the high-level goals, stakeholders, and product scope for the RVC (Robot Vacuum Cleaner) Control SW. It serves as the authoritative statement of intent for all subsequent phases of the Unified Process.
@@ -39,7 +50,7 @@ The SW does **not** control HW directly at the electrical level. It operates on 
                         ┌─────────────────────┐
  Front Sensor ─────────>│                     │──────────> Motor (Direction)
  Left Sensor  ─────────>│   RVC Control SW    │
- Right Sensor ─────────>│                     │──────────> Cleaner (Power)
+ Right Scan ───────────>│                     │──────────> Cleaner (Power)
  Dust Sensor  ─────────>│                     │
  Timer (Tick) ─────────>│                     │
                         └─────────────────────┘
@@ -53,7 +64,7 @@ The SW does **not** control HW directly at the electrical level. It operates on 
 |---|---|---|
 | F-01 | Autonomous Forward Navigation | Moves straight forward and cleans by default |
 | F-02 | Single-Side Obstacle Avoidance | Stops, turns left or right, and resumes when only the front is blocked |
-| F-03 | Surrounded Obstacle Escape | Moves backward, turns, and resumes when front, left, and right are all blocked |
+| F-03 | Surrounded Obstacle Escape | Moves backward, turns, and resumes when front, left, and right scan are all blocked |
 | F-04 | Adaptive Cleaning Intensity | Temporarily powers up the cleaner when dust is detected |
 
 ---

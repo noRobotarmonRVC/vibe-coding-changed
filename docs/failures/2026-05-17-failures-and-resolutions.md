@@ -4,6 +4,19 @@ Failures encountered during construction and their root causes and resolutions.
 
 ---
 
+## Historical Supersession Note - 2026-05-29
+
+### [추가]
+- Added this note so older simulator API examples are not mistaken for the current active design.
+
+### [삭제]
+- Removed active reliance on the historical `injectRight()` example; it remains below only as a record of the 2026-05-17 naming decision.
+
+### [변경]
+- Current simulator right-side input is represented by `injectFront()` during FrontSensor Right Scan setup. See `docs/decisions/2026-05-29-right-scan-and-tick-escape.md`.
+
+---
+
 ## F-01: CMake GTest Configuration Failure
 
 ### What Failed

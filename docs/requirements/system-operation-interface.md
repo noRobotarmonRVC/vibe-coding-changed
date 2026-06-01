@@ -3,6 +3,20 @@
 | «interface» RVCSystem | `startCleaning()` · `tick()` · `onFrontObstacleDetected()` · `stopCleaning()` |
 |---|---|
 
+## SRS Change Trace - 2026-05-29
+
+### [추가]
+- Added Right Scan as the system operation detail for right-side obstacle detection.
+- Added tick-by-tick ESCAPING behavior to `tick()`.
+
+### [삭제]
+- Removed Right Sensor polling from the system operation interface.
+- Removed single-event escape completion from `onFrontObstacleDetected()`.
+
+### [변경]
+- Changed `onFrontObstacleDetected()` to stop, read Left Sensor, perform Right Scan, then decide AVOIDING_OBSTACLE or ESCAPING.
+- Changed ESCAPING motor sequence so `BACKWARD`, `TURN`, and `FORWARD` are emitted by later `tick()` calls.
+
 System Operations are derived from the system events identified in Use-Case scenarios. Each operation represents a message sent to the RVC system by an external actor.
 
 ---
@@ -44,7 +58,7 @@ System Operations are derived from the system events identified in Use-Case scen
 | **Operation** | `tick()` |
 | **Related UC** | UC-02, UC-03, UC-04, UC-05 |
 | **Trigger Actor** | Timer |
-| **Description** | Periodic heartbeat that drives all sensor polling and navigation decisions while the RVC is active. On each tick, the system reads Left, Right, and Dust sensors and determines the next action. |
+| **Description** | Periodic heartbeat that drives sensor polling and navigation decisions while the RVC is active. On each tick, the system reads Left and Dust sensors; right-side obstacle information is produced by a front-sensor right scan during front-obstacle handling. |
 | **Preconditions** | RVC is in an active state (CLEANING, AVOIDING_OBSTACLE, ESCAPING, or INTENSIFYING). |
 | **Postconditions** | Motor direction and cleaner state are updated based on current sensor readings. State may transition per the table below. |
 
@@ -53,8 +67,8 @@ System Operations are derived from the system events identified in Use-Case scen
 | Sensor Reading | Resulting State | Motor | Cleaner |
 |---|---|---|---|
 | No obstacles, no dust | CLEANING | FORWARD | ON |
-| Front = True, Left or Right open | AVOIDING_OBSTACLE | STOP → TURN → FORWARD | ON |
-| Front = True, Left = True, Right = True | ESCAPING | BACKWARD → TURN → FORWARD | ON |
+| Front = True, Left or Right Scan open | AVOIDING_OBSTACLE | STOP → RIGHT scan → TURN → FORWARD | ON |
+| Front = True, Left = True, Right Scan = blocked | ESCAPING | BACKWARD → TURN → FORWARD across separate ticks | ON |
 | Dust = True | INTENSIFYING | FORWARD | POWER_UP |
 | Intensification duration elapsed | CLEANING | FORWARD | ON |
 
@@ -71,11 +85,11 @@ System Operations are derived from the system events identified in Use-Case scen
 | **Trigger Actor** | Front Sensor (interrupt-driven) |
 | **Description** | Interrupt-based notification that an obstacle has been detected directly ahead. Unlike `tick()`, this is asynchronous — the Front Sensor fires this event immediately upon detection, not on a polling cycle. |
 | **Preconditions** | RVC is in CLEANING or AVOIDING_OBSTACLE state. |
-| **Postconditions** | Motor command = STOP. System reads Left and Right sensors to determine next state (AVOIDING_OBSTACLE or ESCAPING). |
+| **Postconditions** | Motor command = STOP. System reads the Left Sensor and performs a right-side scan with the Front Sensor to determine next state (AVOIDING_OBSTACLE or ESCAPING). |
 
 **Decision logic:**
 
-| Left Sensor | Right Sensor | Resulting State |
+| Left Sensor | Right Scan | Resulting State |
 |---|---|---|
 | False (open) | any | AVOIDING_OBSTACLE — turn left |
 | any | False (open) | AVOIDING_OBSTACLE — turn right |
@@ -131,7 +145,7 @@ User       Front Sensor     RVC System       Timer
  |               |               |               |
  |               |--onFrontObstacleDetected()--->|
  |               |               |  Motor: STOP
- |               |               |  [reads Left/Right]
+ |               |               |  [reads Left + performs Right Scan]
  |               |               |  Motor: TURN → FORWARD
  |               |               |               |
  |               |               |<----tick()----|

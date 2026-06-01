@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
-#include <algorithm>
 #include "simulator/Simulator.hpp"
+
+// [변경] Simulator tests trace Right Scan injection and one-cell-per-tick escape.
 
 TEST(SimulatorTest, StartMovesForwardAndCleansOn) {
     Simulator sim;
@@ -40,29 +41,41 @@ TEST(SimulatorTest, FrontObstacleAvoidanceResumesForward) {
     Simulator sim;
     sim.start();
     sim.injectLeft(false);
-    sim.injectRight(false);
+    sim.injectFront(false);  // [추가] Manual Right Scan result uses front injection.
 
     sim.triggerFrontObstacle();
 
     EXPECT_EQ(sim.lastDirection(), Direction::FORWARD);
 }
 
-TEST(SimulatorTest, SurroundedEscapeResumesForward) {
+TEST(SimulatorTest, SurroundedEscapeMovesOneCellPerTick) {
     Simulator sim;
     sim.start();
     sim.injectLeft(true);
-    sim.injectRight(true);
+    sim.injectFront(true);  // [추가] Manual Right Scan result uses front injection.
+    const Position start = sim.pos();
 
     sim.triggerFrontObstacle();
 
-    EXPECT_EQ(sim.lastDirection(), Direction::FORWARD);
+    EXPECT_EQ(sim.pos().x, start.x);
+    EXPECT_EQ(sim.pos().y, start.y);
 
-    // verify full escape sequence: STOP → BACKWARD → LEFT → FORWARD
-    const auto& log = sim.motorLog();
-    auto it = std::find(log.begin(), log.end(), Direction::BACKWARD);
-    ASSERT_NE(it, log.end());
-    EXPECT_EQ(*(it + 1), Direction::LEFT);
-    EXPECT_EQ(*(it + 2), Direction::FORWARD);
+    // [변경] Escape advances one movement command per tick.
+    sim.tick();
+    EXPECT_EQ(sim.lastDirection(), Direction::BACKWARD);
+    EXPECT_EQ(sim.pos().x, start.x - 1);
+    EXPECT_EQ(sim.pos().y, start.y);
+
+    const Position after_backward = sim.pos();
+    sim.tick();
+    EXPECT_EQ(sim.lastDirection(), Direction::LEFT);
+    EXPECT_EQ(sim.pos().x, after_backward.x);
+    EXPECT_EQ(sim.pos().y, after_backward.y);
+
+    sim.tick();
+    EXPECT_EQ(sim.lastDirection(), Direction::FORWARD);
+    EXPECT_EQ(sim.pos().x, after_backward.x);
+    EXPECT_EQ(sim.pos().y, after_backward.y - 1);
 }
 
 TEST(SimulatorTest, StopHaltsMotorAndCleaner) {

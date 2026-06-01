@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "domain/DefaultNavigationStrategy.hpp"
 
+// [변경] is_right_blocked now represents Right Scan blocked, not RightSensor polling.
+
 class DefaultNavigationStrategyTest : public ::testing::Test {
 protected:
     DefaultNavigationStrategy strategy;

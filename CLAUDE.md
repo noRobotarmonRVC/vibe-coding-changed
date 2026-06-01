@@ -2,6 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Change Trace - 2026-05-29
+
+### [추가]
+- Added Right Scan terminology and tick-by-tick ESCAPING behavior to the current working guidance.
+
+### [삭제]
+- Removed dedicated RightSensor from the active controller dependency description.
+
+### [변경]
+- Changed architecture guidance so right-side detection is FrontSensor scan based.
+
 ## Project Overview
 
 This project builds an RVC (Robot Vacuum Cleaner) system using OOAD based on the Unified Process (UP). It produces three components: **RVC Control SW**, **RVC UI**, and **RVC Simulator**. Development follows UP phases sequentially: Inception → Elaboration → Construction.
@@ -76,7 +87,7 @@ The RVC Control SW uses a **4-layer architecture**: Application → Domain → I
 **Key design decisions:**
 - `RvcController` is the central orchestrator with an explicit `RvcState` state machine (IDLE / CLEANING / AVOIDING_OBSTACLE / ESCAPING / INTENSIFYING).
 - Navigation logic lives in `INavigationStrategy` / `DefaultNavigationStrategy` — injected into `RvcController` so it can be swapped (e.g., ML-based) without touching the controller.
-- `FrontSensor` is interrupt-driven (`onInterrupt()` → `onFrontObstacleDetected()`); Left, Right, Dust sensors are polled each Tick via `detect()`.
+- `FrontSensor` is interrupt-driven (`onInterrupt()` → `onFrontObstacleDetected()`); Left and Dust sensors are polled each Tick via `detect()`. Right-side obstacles are checked by a right turn, FrontSensor read, and left turn restore.
 - All hardware dependencies are injected via constructor (`ISensor*`, `IMotorController*`, `ICleanerController*`) — enables full Google Test isolation with mocks.
 
 **Enums:** `Direction` {FORWARD, BACKWARD, LEFT, RIGHT, STOP} · `CleanPower` {OFF, ON, POWER_UP} · `RvcState`
@@ -87,7 +98,7 @@ The RVC Control SW uses a **4-layer architecture**: Application → Domain → I
 src/
 ├── interfaces/        # ISensor, IMotorController, ICleanerController, INavigationStrategy
 ├── domain/            # SensorData, enums, DefaultNavigationStrategy
-├── hal/               # FrontSensor, LeftSensor, RightSensor, DustSensor
+├── hal/               # FrontSensor, LeftSensor, DustSensor
 └── app/               # RvcController, main.cpp
 test/
 ├── domain/            # DefaultNavigationStrategyTest

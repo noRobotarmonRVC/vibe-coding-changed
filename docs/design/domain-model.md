@@ -1,5 +1,16 @@
 # Domain Model
 
+## Design Change Trace - 2026-05-29
+
+### [추가]
+- Added `RightScan` as a domain concept for right-side obstacle detection.
+
+### [삭제]
+- Removed active `RightSensor` participation from the current domain model.
+
+### [변경]
+- Changed `Surrounded State` to depend on Front Sensor, Left Sensor, and Right Scan.
+
 The Domain Model identifies the key conceptual classes in the RVC problem domain, their attributes, and their relationships. These are not software classes — they represent real-world concepts.
 
 ---
@@ -13,7 +24,7 @@ The Domain Model identifies the key conceptual classes in the RVC problem domain
 | **Sensor** | Abstract concept for any input device on the RVC that detects environment state. |
 | **FrontSensor** | Interrupt-driven sensor detecting obstacles directly ahead. |
 | **LeftSensor** | Periodic sensor detecting obstacles on the left side. |
-| **RightSensor** | Periodic sensor detecting obstacles on the right side. |
+| **RightScan** | Right-side obstacle check performed by turning right, sampling the FrontSensor, and restoring heading. |
 | **DustSensor** | Periodic sensor detecting dust on the floor surface. |
 | **Obstacle** | A physical object that blocks the RVC's path. Detected by Front/Left/Right sensors. |
 | **Dust** | Particulate matter on the floor surface. Detected by the DustSensor. |
@@ -32,7 +43,7 @@ The Domain Model identifies the key conceptual classes in the RVC problem domain
 | CleaningSession | state {Idle, Active, Stopped} |
 | FrontSensor | is_triggered : bool |
 | LeftSensor | is_blocked : bool |
-| RightSensor | is_blocked : bool |
+| RightScan | is_blocked : bool |
 | DustSensor | has_dust : bool |
 | DirectionCommand | value {Forward, Backward, Left, Right, Stop} |
 | CleaningCommand | value {Off, On, PowerUp} |
@@ -46,7 +57,7 @@ The Domain Model identifies the key conceptual classes in the RVC problem domain
 RVC ──────────────── conducts ────────────────> CleaningSession
 RVC ──────────────── has ──────────────────1──> FrontSensor
 RVC ──────────────── has ──────────────────1──> LeftSensor
-RVC ──────────────── has ──────────────────1──> RightSensor
+RVC ──────────────── performs ─────────────1──> RightScan
 RVC ──────────────── has ──────────────────1──> DustSensor
 RVC ──────────────── driven by ────────────1──> Timer
 RVC ──────────────── commands ─────────────1──> Motor          (via DirectionCommand)
@@ -54,12 +65,11 @@ RVC ──────────────── commands ──────
 
 FrontSensor ──────── detects ──────────────*──> Obstacle       (interrupt)
 LeftSensor ───────── detects ──────────────*──> Obstacle       (periodic)
-RightSensor ──────── detects ──────────────*──> Obstacle       (periodic)
+RightScan ────────── detects ──────────────*──> Obstacle       (front-sensor scan)
 DustSensor ───────── detects ──────────────*──> Dust           (periodic)
 
 FrontSensor ─────────────────┐
 LeftSensor ──────────────────┤──── generalize ──────────────── Sensor
-RightSensor ─────────────────┤
 DustSensor ──────────────────┘
 ```
 

@@ -4,6 +4,19 @@ Decisions made during the Inception, Elaboration, and Construction phases of ite
 
 ---
 
+## Supersession Note - 2026-05-29
+
+### [추가]
+- Added this note to connect the original sensor architecture decisions to the current Right Scan architecture.
+
+### [삭제]
+- Removed active reliance on a dedicated RightSensor from AD-02 and AD-04.
+
+### [변경]
+- AD-02 and AD-04 are superseded for right-side detection by FrontSensor Right Scan and tick-based ESCAPING. See `docs/decisions/2026-05-29-right-scan-and-tick-escape.md`.
+
+---
+
 ## AD-01: Strategy Pattern for Navigation Logic
 
 **Context**  

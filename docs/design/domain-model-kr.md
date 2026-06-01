@@ -1,74 +1,64 @@
 # Domain Model
 
-Domain Model은 RVC 문제 도메인의 핵심 개념 클래스, 속성, 관계를 식별한다. 이것들은 소프트웨어 클래스가 아니라 실세계 개념을 표현한다.
+## Design Change Trace - 2026-05-29
+
+### [추가]
+- `Right Scan`을 오른쪽 장애물 감지 도메인 개념으로 추가한다.
+
+### [삭제]
+- 현재 도메인 모델의 활성 참여자에서 전용 `RightSensor`를 삭제한다.
+
+### [변경]
+- `Surrounded State` 조건을 `Front Sensor`, `Left Sensor`, `Right Scan` 기준으로 변경한다.
 
 ---
 
-## 1. 개념 클래스
+## 1. 핵심 개념
 
-| 클래스 | 설명 |
+| 개념 | 설명 |
 |---|---|
-| **RVC** | Robot Vacuum Cleaner. 탐색하고 청소하는 중심 엔터티. |
-| **CleaningSession** | 시작부터 종료까지의 단일 실행. 지속 시간과 상태를 추적. |
-| **Sensor** | RVC에서 환경 상태를 감지하는 입력 장치의 추상 개념. |
-| **FrontSensor** | 정면의 장애물을 감지하는 interrupt 방식 센서. |
-| **LeftSensor** | 좌측 장애물을 주기적으로 감지하는 센서. |
-| **RightSensor** | 우측 장애물을 주기적으로 감지하는 센서. |
-| **DustSensor** | 바닥 표면의 먼지를 주기적으로 감지하는 센서. |
-| **Obstacle** | RVC의 경로를 막는 물리적 물체. Front/Left/Right 센서가 감지. |
-| **Dust** | 바닥 표면의 미립자. DustSensor가 감지. |
-| **Motor** | RVC의 물리적 이동을 구동. Direction 명령을 수신. |
-| **Cleaner** | 청소기/걸레 메커니즘. 전력 레벨 명령을 수신. |
-| **Timer** | 제어 루프를 구동하는 주기적 Tick 신호를 생성하는 디지털 클록. |
-| **DirectionCommand** | Motor에 대한 명령: Forward, Backward, Left(회전), Right(회전), Stop. |
-| **CleaningCommand** | Cleaner에 대한 명령: Off, On, Power Up. |
+| RVC | 자율 주행하며 바닥을 청소하는 로봇 청소기이다. |
+| Cleaning Session | 사용자의 start 명령부터 stop 명령까지 이어지는 청소 실행 단위이다. |
+| Sensor | 주변 환경 또는 바닥 상태를 감지하는 입력 장치의 추상 개념이다. |
+| Front Sensor | 전방 장애물을 감지한다. Right Scan 중에는 오른쪽 방향의 장애물 확인에도 사용된다. |
+| Left Sensor | 왼쪽 장애물 상태를 감지한다. |
+| Right Scan | 오른쪽으로 회전한 뒤 Front Sensor를 사용해 오른쪽 장애물 상태를 판단하는 내부 동작이다. |
+| Dust Sensor | 먼지 상태를 감지한다. |
+| Motor | RVC의 이동과 회전을 수행한다. |
+| Cleaner | 청소 장치의 전원과 강도를 제어한다. |
+| Timer Tick | 주기적인 control cycle을 발생시키는 시간 이벤트이다. |
 
 ---
 
-## 2. 속성
+## 2. 상태 개념
 
-| 클래스 | 속성 |
+| 상태 | 의미 |
 |---|---|
-| CleaningSession | state {Idle, Active, Stopped} |
-| FrontSensor | is_triggered : bool |
-| LeftSensor | is_blocked : bool |
-| RightSensor | is_blocked : bool |
-| DustSensor | has_dust : bool |
-| DirectionCommand | value {Forward, Backward, Left, Right, Stop} |
-| CleaningCommand | value {Off, On, PowerUp} |
-| Timer | tick_interval : duration |
+| Idle | 청소하지 않는 대기 상태이다. |
+| Cleaning | 기본 주행과 청소를 수행하는 상태이다. |
+| Intensifying | 먼지 감지 후 일시적으로 청소 강도를 높인 상태이다. |
+| Avoiding Obstacle | 전방 장애물을 회피하기 위해 방향을 결정하는 일시 상태이다. |
+| Escaping | 전방, 왼쪽, 오른쪽이 모두 막힌 상태에서 탈출을 진행하는 상태이다. |
 
 ---
 
-## 3. 연관 관계
+## 3. 주요 관계
 
-```
-RVC ──────────────── conducts ────────────────> CleaningSession
-RVC ──────────────── has ──────────────────1──> FrontSensor
-RVC ──────────────── has ──────────────────1──> LeftSensor
-RVC ──────────────── has ──────────────────1──> RightSensor
-RVC ──────────────── has ──────────────────1──> DustSensor
-RVC ──────────────── driven by ────────────1──> Timer
-RVC ──────────────── commands ─────────────1──> Motor          (via DirectionCommand)
-RVC ──────────────── commands ─────────────1──> Cleaner        (via CleaningCommand)
+- RVC는 Cleaning Session 동안 Timer Tick과 sensor event를 처리한다.
+- Control SW는 SensorData를 구성하고 Navigation Strategy에 전달한다.
+- Navigation Strategy는 SensorData를 바탕으로 Direction을 결정한다.
+- Motor와 Cleaner는 Control SW가 발행한 명령을 수행한다.
 
-FrontSensor ──────── detects ──────────────*──> Obstacle       (interrupt)
-LeftSensor ───────── detects ──────────────*──> Obstacle       (periodic)
-RightSensor ──────── detects ──────────────*──> Obstacle       (periodic)
-DustSensor ───────── detects ──────────────*──> Dust           (periodic)
+---
 
-FrontSensor ─────────────────┐
-LeftSensor ──────────────────┤──── generalize ──────────────── Sensor
-RightSensor ─────────────────┤
-DustSensor ──────────────────┘
+## 4. 포위 상태 정의
+
+포위 상태는 다음 조건이 모두 참일 때 발생한다.
+
+```text
+Front Sensor = blocked
+Left Sensor = blocked
+Right Scan = blocked
 ```
 
----
-
-## 4. 핵심 도메인 규칙
-
-- CleaningSession은 Motor와 Cleaner가 모두 동작 중일 때만 Active 상태다.
-- RVC는 언제든 정확히 하나의 DirectionCommand와 하나의 CleaningCommand를 발행한다.
-- FrontSensor는 비동기적으로 (interrupt) 트리거되며, 나머지 모든 센서는 Tick마다 동기적으로 읽힌다.
-- 세 방향 모두(Front + Left + Right)에 Obstacle이 있는 상태를 **Surrounded State**라 하며, 회전 전에 후진이 필요하다.
-- 활성 청소 중 먼지 감지 시 CleaningCommand를 일시적으로 PowerUp으로 올린다. navigation은 중단하지 않는다.
+이 상태에서는 한 이벤트 안에서 모든 탈출 동작을 끝내지 않고, tick마다 하나씩 `BACKWARD`, `LEFT`, `FORWARD` 명령을 실행한다.

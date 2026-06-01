@@ -1,154 +1,68 @@
-# System Operation Interface (한국어)
+# System Operation Interface
 
-| «interface» RVCSystem | `startCleaning()` · `tick()` · `onFrontObstacleDetected()` · `stopCleaning()` |
-|---|---|
+## SRS Change Trace - 2026-05-29
 
-System Operation은 Use-Case 시나리오의 시스템 이벤트에서 도출된다. 각 오퍼레이션은 외부 액터가 RVC 시스템에 보내는 메시지를 나타낸다.
+### [추가]
+- 오른쪽 장애물 판단을 위한 `Right Scan Result` 입력 의미를 추가한다.
+- ESCAPING 상태에서 tick별 이동 명령을 관찰할 수 있어야 한다는 인터페이스 기대를 추가한다.
+
+### [삭제]
+- 활성 시스템 입력에서 전용 `Right Sensor` 입력을 삭제한다.
+
+### [변경]
+- 장애물 회피 흐름의 오른쪽 상태 출처를 Right Sensor에서 Front Sensor Right Scan으로 변경한다.
 
 ---
 
-## 1. 오퍼레이션 요약
+## 1. 목적
 
-| 오퍼레이션 | 트리거 액터 | 관련 UC |
+이 문서는 RVC Control SW가 외부 actor, sensor, actuator, simulator와 주고받는 시스템 수준 인터페이스를 정의한다.
+
+---
+
+## 2. 입력 인터페이스
+
+| 인터페이스 | 방향 | 설명 |
 |---|---|---|
-| `startCleaning()` | User | UC-01 |
-| `tick()` | Timer | UC-02, UC-03, UC-04, UC-05 |
-| `onFrontObstacleDetected()` | Front Sensor | UC-03, UC-04 |
-| `stopCleaning()` | User | UC-06 |
+| `startCleaning()` | User -> System | 청소 세션을 시작한다. |
+| `stopCleaning()` | User -> System | 청소 세션을 종료한다. |
+| `onFrontObstacleDetected()` | Front Sensor -> System | 전방 장애물 interrupt를 전달한다. |
+| `onTick()` | Timer -> System | 주기 제어 tick을 전달한다. |
+| `LeftSensor::detect()` | Sensor -> System | 왼쪽 장애물 상태를 반환한다. |
+| `FrontSensor::detect()` during Right Scan | Sensor -> System | 오른쪽 방향으로 회전한 상태에서 오른쪽 장애물 상태를 반환한다. |
+| `DustSensor::detect()` | Sensor -> System | 먼지 감지 상태를 반환한다. |
 
 ---
 
-## 2. 시스템 오퍼레이션 명세
+## 3. 출력 인터페이스
 
----
-
-### SO-01: `startCleaning()`
-
-| 항목 | 내용 |
-|---|---|
-| **오퍼레이션** | `startCleaning()` |
-| **관련 UC** | UC-01: 청소 세션 시작 |
-| **트리거 액터** | User |
-| **설명** | RVC를 IDLE 상태에서 CLEANING 상태로 전환하고, Cleaner를 활성화하며, 전진을 시작한다. |
-| **사전 조건** | RVC가 IDLE 상태다. |
-| **사후 조건** | RVC 상태 = CLEANING. Motor 명령 = FORWARD. Cleaner 명령 = ON. |
-
-**참조:** UC-01 Step 1–4
-
----
-
-### SO-02: `tick()`
-
-| 항목 | 내용 |
-|---|---|
-| **오퍼레이션** | `tick()` |
-| **관련 UC** | UC-02, UC-03, UC-04, UC-05 |
-| **트리거 액터** | Timer |
-| **설명** | RVC가 활성 상태일 때 모든 센서 폴링과 navigation 결정을 구동하는 주기적 신호. 매 tick마다 Left, Right, Dust 센서를 읽고 다음 동작을 결정한다. |
-| **사전 조건** | RVC가 활성 상태다 (CLEANING, AVOIDING_OBSTACLE, ESCAPING, INTENSIFYING 중 하나). |
-| **사후 조건** | 현재 센서 값에 따라 Motor 방향과 Cleaner 상태가 업데이트된다. 아래 표에 따라 상태가 전이될 수 있다. |
-
-**`tick()` 에 의한 상태 전이:**
-
-| 센서 읽기 | 전이 상태 | Motor | Cleaner |
-|---|---|---|---|
-| 장애물 없음, 먼지 없음 | CLEANING | FORWARD | ON |
-| Front = True, Left 또는 Right 개방 | AVOIDING_OBSTACLE | STOP → TURN → FORWARD | ON |
-| Front = True, Left = True, Right = True | ESCAPING | BACKWARD → TURN → FORWARD | ON |
-| Dust = True | INTENSIFYING | FORWARD | POWER_UP |
-| 강화 지속 시간 경과 | CLEANING | FORWARD | ON |
-
-**참조:** UC-02 주요 성공 시나리오 및 대안 흐름
-
----
-
-### SO-03: `onFrontObstacleDetected()`
-
-| 항목 | 내용 |
-|---|---|
-| **오퍼레이션** | `onFrontObstacleDetected()` |
-| **관련 UC** | UC-03, UC-04 |
-| **트리거 액터** | Front Sensor (interrupt 방식) |
-| **설명** | 전방 장애물 감지 시 발생하는 interrupt 기반 알림. `tick()`과 달리 비동기적으로, 폴링 주기가 아닌 감지 즉시 발생한다. |
-| **사전 조건** | RVC가 CLEANING 또는 AVOIDING_OBSTACLE 상태다. |
-| **사후 조건** | Motor 명령 = STOP. 시스템이 Left/Right 센서를 읽고 다음 상태(AVOIDING_OBSTACLE 또는 ESCAPING)를 결정한다. |
-
-**결정 로직:**
-
-| Left Sensor | Right Sensor | 전이 상태 |
+| 인터페이스 | 방향 | 설명 |
 |---|---|---|
-| False (개방) | 무관 | AVOIDING_OBSTACLE — 좌회전 |
-| 무관 | False (개방) | AVOIDING_OBSTACLE — 우회전 |
-| True | True | ESCAPING |
-
-**참조:** UC-03 Step 1–3, UC-03 대안 흐름, UC-04 Step 1
+| `MotorController::move(Direction)` | System -> Motor | 이동, 회전, 정지 명령을 전달한다. |
+| `CleanerController::setPower(CleanPower)` | System -> Cleaner | 청소 장치 전원 또는 강도 명령을 전달한다. |
 
 ---
 
-### SO-04: `stopCleaning()`
+## 4. 주요 동작 계약
 
-| 항목 | 내용 |
-|---|---|
-| **오퍼레이션** | `stopCleaning()` |
-| **관련 UC** | UC-06: 청소 세션 종료 |
-| **트리거 액터** | User |
-| **설명** | 활성 청소 세션을 종료하고, Motor를 정지하며, Cleaner를 끈다. |
-| **사전 조건** | RVC가 활성 상태다 (CLEANING, AVOIDING_OBSTACLE, ESCAPING, INTENSIFYING 중 하나). |
-| **사후 조건** | RVC 상태 = IDLE. Motor 명령 = STOP. Cleaner 명령 = OFF. |
+### 전방 장애물 처리
 
-**참조:** UC-06 Step 1–4
+1. System은 먼저 `STOP`을 명령한다.
+2. System은 `RIGHT` 회전으로 오른쪽 scan 자세를 만든다.
+3. System은 Front Sensor를 읽어 Right Scan 결과를 얻는다.
+4. System은 `LEFT` 회전으로 원래 heading을 복구한다.
+5. Left Sensor와 Right Scan 결과를 navigation strategy에 전달한다.
+
+### ESCAPING 처리
+
+- 장애물 감지 tick에서는 후진하지 않는다.
+- 다음 tick마다 하나의 motor command만 발생한다.
+- 기본 순서는 `BACKWARD`, `LEFT`, `FORWARD`이다.
 
 ---
 
-## 3. 시스템 시퀀스 다이어그램
+## 5. Simulator 관찰 계약
 
-### 시나리오 A: 정상 청소 (장애물 없음, 먼지 없음)
-
-```
-User          RVC System       Timer
- |                |               |
- |--startCleaning()-->            |
- |                |               |
- |                |<----tick()----|
- |                |  [장애물 없음, 먼지 없음]
- |                |  Motor: FORWARD, Cleaner: ON
- |                |               |
- |                |<----tick()----|
- |                |  (반복)        |
- |                |               |
- |--stopCleaning()-->             |
- |                |               |
-```
-
-### 시나리오 B: 전방 장애물 회피
-
-```
-User       Front Sensor     RVC System       Timer
- |               |               |               |
- |--startCleaning()------------>|               |
- |               |               |<----tick()----|
- |               |               |  Motor: FORWARD
- |               |               |               |
- |               |--onFrontObstacleDetected()--->|
- |               |               |  Motor: STOP
- |               |               |  [Left/Right 읽기]
- |               |               |  Motor: TURN → FORWARD
- |               |               |               |
- |               |               |<----tick()----|
- |               |               |  (navigation 재개)
-```
-
-### 시나리오 C: 청소 강도 높이기
-
-```
-User          RVC System       Timer        Dust Sensor
- |                |               |               |
- |--startCleaning()-->            |               |
- |                |<----tick()----|               |
- |                |  [Dust Sensor = True]         |
- |                |  Cleaner: POWER_UP            |
- |                |               |               |
- |                |<----tick()----|               |
- |                |  [지속 시간 경과]              |
- |                |  Cleaner: ON (정상)           |
-```
+- simulator는 한 tick에 실제 위치 이동을 한 칸 이하로 반영한다.
+- Right Scan 테스트는 별도 right sensor injection이 아니라 front sensor injection으로 표현한다.
+- motor log와 cleaner log는 controller의 observable behavior 검증에 사용한다.

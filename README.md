@@ -1,5 +1,17 @@
 # RVC Control SW
 
+## Change Trace - 2026-05-29
+
+### [추가]
+- Added Right Scan as the replacement right-side detection mechanism.
+- Added tick-by-tick ESCAPING behavior for backward movement.
+
+### [삭제]
+- Removed dedicated RightSensor from the active control path.
+
+### [변경]
+- Updated requirements, design, code, simulator, and tests to follow the same Right Scan / tick escape behavior.
+
 OOAD / Unified Process(UP) 방법론으로 개발한 로봇 청소기(RVC) 제어 소프트웨어입니다.
 
 ---
@@ -45,7 +57,7 @@ OOADProject/
 ├── src/
 │   ├── interfaces/        # ISensor, IMotorController, ICleanerController, INavigationStrategy
 │   ├── domain/            # DefaultNavigationStrategy, SensorData, Position, Heading, enum 정의
-│   ├── hal/               # FrontSensor, LeftSensor, RightSensor, DustSensor
+│   ├── hal/               # FrontSensor, LeftSensor, DustSensor
 │   ├── app/               # RvcController, main.cpp
 │   ├── simulator/         # Simulator, SimulatedMotor, SimulatedCleaner, SimulatedSensor
 │   └── ui/                # ConsoleDisplay, GridDisplay
@@ -85,7 +97,7 @@ OOADProject/
 │   INavigationStrategy                         │
 ├──────────────────────────────────────────────┤
 │      Hardware Abstraction Layer (HAL)         │
-│   FrontSensor  LeftSensor  RightSensor        │
+│   FrontSensor  LeftSensor                     │
 │   DustSensor                                  │
 └──────────────────────────────────────────────┘
 ```

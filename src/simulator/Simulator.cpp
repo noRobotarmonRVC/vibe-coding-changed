@@ -6,7 +6,7 @@ Simulator::Simulator(int grid_width, int grid_height,
     , _grid_height(grid_height)
     , _pos(start)
     , _heading(start_heading)
-    , _controller(&_front, &_left, &_right, &_dust, &_motor, &_cleaner, &_nav) {}
+    , _controller(&_front, &_left, &_dust, &_motor, &_cleaner, &_nav) {}
 
 void Simulator::start() {
     _controller.start();
@@ -19,9 +19,19 @@ void Simulator::stop() {
 }
 
 void Simulator::tick() {
-    // Auto-inject left/right sensors from the grid before the control cycle
-    _left.inject(isBlocked(adjacentCell(_pos, turnLeft(_heading))));
-    _right.inject(isBlocked(adjacentCell(_pos, turnRight(_heading))));
+    if (_escape_ticks_remaining > 0) {
+        // [변경] During escape, each simulator tick applies one controller step.
+        _controller.onTick();
+        applyPendingMotorCommands();
+        --_escape_ticks_remaining;
+        return;
+    }
+
+    // [변경] Right-side grid reading feeds the FrontSensor right scan.
+    const bool is_left_blocked  = isBlocked(adjacentCell(_pos, turnLeft(_heading)));
+    const bool is_right_blocked = isBlocked(adjacentCell(_pos, turnRight(_heading)));
+    _left.inject(is_left_blocked);
+    _front.inject(is_right_blocked);
 
     // Auto-inject dust sensor if robot is on a dust cell, then consume it
     auto dust_key = std::make_pair(_pos.x, _pos.y);
@@ -34,7 +44,7 @@ void Simulator::tick() {
 
     // Front sensor is interrupt-driven: trigger handler if blocked, else run tick
     if (isBlocked(adjacentCell(_pos, _heading))) {
-        _controller.onFrontObstacleDetected();
+        triggerObstacleWithSideReadings(is_left_blocked, is_right_blocked);
     } else {
         _controller.onTick();
     }
@@ -42,13 +52,11 @@ void Simulator::tick() {
 }
 
 void Simulator::triggerFrontObstacle() {
-    _controller.onFrontObstacleDetected();
-    applyPendingMotorCommands();
+    triggerObstacleWithSideReadings(_left.detect(), _front.detect());
 }
 
 void Simulator::injectFront(bool reading) { _front.inject(reading); }
 void Simulator::injectLeft(bool reading)  { _left.inject(reading); }
-void Simulator::injectRight(bool reading) { _right.inject(reading); }
 void Simulator::injectDust(bool reading)  { _dust.inject(reading); }
 
 void Simulator::placeObstacle(int x, int y) { _obstacles.insert({x, y}); }
@@ -132,4 +140,16 @@ void Simulator::applyPendingMotorCommands() {
         }
     }
     _motor_log_applied = log.size();
+}
+
+void Simulator::triggerObstacleWithSideReadings(bool is_left_blocked, bool is_right_blocked) {
+    // [추가] Manual and grid-triggered obstacle paths share right-scan setup.
+    _left.inject(is_left_blocked);
+    _front.inject(is_right_blocked);
+    _controller.onFrontObstacleDetected();
+    applyPendingMotorCommands();
+
+    if (is_left_blocked && is_right_blocked) {
+        _escape_ticks_remaining = 3;
+    }
 }

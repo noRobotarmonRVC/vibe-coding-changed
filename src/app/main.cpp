@@ -5,8 +5,13 @@
 #include <mutex>
 #include <atomic>
 #include <chrono>
+#ifdef _WIN32
+#include <conio.h>
+#include <windows.h>
+#else
 #include <termios.h>
 #include <unistd.h>
+#endif
 #include "simulator/Simulator.hpp"
 #include "ui/GridDisplay.hpp"
 
@@ -14,15 +19,38 @@ using namespace std::chrono_literals;
 
 // ── Terminal raw mode ─────────────────────────────────────────────────────────
 
+#ifdef _WIN32
+static DWORD g_orig_console_mode = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+#else
 static struct termios g_orig_termios; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+#endif
 
 static void restoreTerminal() {
+#ifdef _WIN32
+    SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), g_orig_console_mode);
+#else
     tcsetattr(STDIN_FILENO, TCSANOW, &g_orig_termios);
+#endif
     // Show cursor, move to safe position
     std::cout << "\033[?25h\033[999;1H\n" << std::flush;
 }
 
 static void enableRawMode() {
+#ifdef _WIN32
+    // [변경] Windows builds use Console API instead of POSIX termios.
+    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    GetConsoleMode(input, &g_orig_console_mode);
+    std::atexit(restoreTerminal);
+    DWORD raw = g_orig_console_mode;
+    raw &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT);
+    SetConsoleMode(input, raw);
+
+    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD output_mode = 0;
+    if (GetConsoleMode(output, &output_mode) != 0) {
+        SetConsoleMode(output, output_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    }
+#else
     tcgetattr(STDIN_FILENO, &g_orig_termios);
     std::atexit(restoreTerminal);
 
@@ -31,6 +59,16 @@ static void enableRawMode() {
     raw.c_cc[VMIN]  = 1;
     raw.c_cc[VTIME] = 0;
     tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+#endif
+}
+
+static bool readInputChar(char& c) {
+#ifdef _WIN32
+    c = static_cast<char>(_getch());
+    return true;
+#else
+    return read(STDIN_FILENO, &c, 1) > 0;
+#endif
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -145,7 +183,7 @@ int main() {
 
     while (!quit) {
         char c = '\0';
-        if (read(STDIN_FILENO, &c, 1) <= 0) { break; }
+        if (!readInputChar(c)) { break; }
 
         std::lock_guard<std::mutex> lock(sim_mutex);
 

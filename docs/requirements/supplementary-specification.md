@@ -4,6 +4,21 @@ This document captures system requirements not expressed in the Use-Case Model. 
 
 ---
 
+## SRS Change Trace - 2026-05-29
+
+### [추가]
+- Added right-side obstacle detection by Front Sensor right scan.
+- Added tick-level movement constraint for backward escape movement.
+
+### [삭제]
+- Removed periodic Right Sensor polling from active functional and performance requirements.
+
+### [변경]
+- Changed periodic sensor evaluation from `Left, Right, Dust` to `Left, Dust`.
+- Changed motor movement semantics so `BACKWARD` movement is constrained to one cell per Tick, matching `FORWARD`.
+
+---
+
 ## 1. Functionality
 
 Functional requirements are fully covered by the Use-Case Model (`use-case-model.md`). This section records functional constraints not tied to a specific use case.
@@ -11,9 +26,10 @@ Functional requirements are fully covered by the Use-Case Model (`use-case-model
 | ID | Requirement |
 |---|---|
 | FUNC-01 | The system must process Front Sensor input as an interrupt (not polled), ensuring immediate response to front obstacles. |
-| FUNC-02 | Left, Right, and Dust Sensor inputs are evaluated on each Timer Tick (periodic polling). |
+| FUNC-02 | Left and Dust Sensor inputs are evaluated on each Timer Tick (periodic polling). Right-side obstacle status is evaluated through a Front Sensor right scan during front-obstacle handling. |
 | FUNC-03 | Motor direction commands are mutually exclusive; only one direction is active at a time. |
 | FUNC-04 | Cleaner power states are mutually exclusive: Off, On, or Power Up. |
+| FUNC-05 | Forward and backward translation commands must move the RVC at the same granularity: one cell per Tick. |
 
 ---
 
@@ -37,7 +53,7 @@ Not applicable. The RVC Control SW has no direct user interface; user interactio
 
 | ID | Requirement |
 |---|---|
-| PERF-01 | Periodic sensor evaluation (Left, Right, Dust) must complete within a single Tick interval. |
+| PERF-01 | Periodic sensor evaluation (Left, Dust) must complete within a single Tick interval. |
 | PERF-02 | The intensified cleaning duration (UC-05) must be configurable as a system constant, not hardcoded inline. |
 
 ---

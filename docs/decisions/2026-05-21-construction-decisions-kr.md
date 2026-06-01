@@ -1,22 +1,39 @@
-# 아키텍처 결정 사항 — 2026-05-21 (Control SW)
+# Construction Decisions - 2026-05-21
 
-Construction 단계 2차 이터레이션에서 RVC Control SW에 영향을 미치는 결정.
+Construction 단계에서 구현과 테스트를 진행하며 내린 결정을 기록한다.
 
 ---
 
-## AD-07: onTick()은 매 사이클마다 FORWARD를 재발행해야 한다
+## AD-06: Google Test는 FetchContent로 가져온다
 
-**배경**
-`start()` 호출 이후 RVC는 장애물이 감지되거나 `stop()`이 호출될 때까지 계속 전진해야 한다. 초기 구현은 `start()` 안에서 `FORWARD`를 한 번만 발행했다.
+**배경**  
+개발 환경마다 Google Test가 system package로 설치되어 있다고 보장할 수 없다.
 
-**결정 근거**
-실제 H-브리지 하드웨어는 다시 명령을 받을 때까지 방향을 래치(latch)하므로, 실제 제품에서는 시작 시 한 번의 `FORWARD`로 충분하다. 그러나 `IMotorController` 인터페이스 계약은 이런 보장을 하지 않는다 — 각 `move()` 호출은 독립적인 명령이며, 호출자는 틱 경계 간 연속성을 가정할 수 없다. Control SW는 구현 세부사항에 무관하게 매 틱마다 전진 의도를 명시적으로 표현해야 한다.
+**결정**  
+`find_package(GTest REQUIRED)` 대신 CMake `FetchContent`로 Google Test v1.14.0을 가져온다.
 
-**결정**
-`onTick()`은 CLEANING 또는 INTENSIFYING 상태일 때 매 틱 마지막에 `_motor->move(Direction::FORWARD)`를 발행한다.
+**결과**  
+로컬과 CI에서 동일한 방식으로 test dependency를 준비할 수 있다.
 
-**산출물**
-- `src/app/RvcController.cpp` — `onTick()`에서 `_state == CLEANING || INTENSIFYING` 조건으로 FORWARD 추가
+---
 
-**트레이드오프**
-실제 하드웨어에는 매 틱마다 중복 명령이 전송된다(하드웨어는 이미 방향이 래치되어 있으므로 무시). `IMotorController` 구현 세부사항에 대한 가정 없이 인터페이스 계약을 자급자족(self-contained)하게 만들기 위해 허용한다.
+## AD-07: Simulator API는 `inject*()` 명명 규칙을 사용한다
+
+**배경**  
+test double의 `set*()` 이름은 production domain의 setter anti-pattern과 혼동될 수 있다.
+
+**결정**  
+simulated sensor에 값을 넣는 API는 `injectFront`, `injectLeft`, `injectDust`처럼 `inject*()` 형식으로 명명한다.
+
+**현재 상태**  
+2026-05-29 이후 전용 right sensor injection은 제거되었다. 오른쪽 scan 결과는 Right Scan 상황에서 front sensor injection으로 표현한다.
+
+---
+
+## AD-08: Tests는 Observable Behavior를 검증한다
+
+**결정**  
+테스트는 controller 내부 state가 아니라 motor command log, cleaner power log, simulator position을 검증한다.
+
+**결과**  
+state machine 내부 구현이 바뀌어도 외부 동작이 유지되면 테스트가 불필요하게 깨지지 않는다.

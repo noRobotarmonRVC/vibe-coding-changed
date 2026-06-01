@@ -31,9 +31,11 @@ jobs:
         run: cmake -S src -B build -DENABLE_COVERAGE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Build
+        # [변경] CI builds the active CMake graph after RightSensor removal.
         run: cmake --build build --parallel
 
       - name: Run tests
+        # [추가] Right Scan and tick ESCAPING behavior are covered by rvc_tests.
         run: cd build && ctest --output-on-failure
 
       - name: Static analysis

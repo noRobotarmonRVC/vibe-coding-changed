@@ -3,6 +3,8 @@
 #include "app/RvcController.hpp"
 #include "domain/DefaultNavigationStrategy.hpp"
 
+// [변경] Controller tests trace RightSensor removal and FrontSensor Right Scan behavior.
+
 // ── hand-written mocks ────────────────────────────────────────────────────────
 
 class MockSensor : public ISensor {
@@ -29,11 +31,12 @@ public:
 
 class RvcControllerTest : public ::testing::Test {
 protected:
-    MockSensor front, left, right, dust;
+    // [삭제] No right sensor mock; front is reused for Right Scan results.
+    MockSensor front, left, dust;
     MockMotor motor;
     MockCleaner cleaner;
     DefaultNavigationStrategy nav;
-    RvcController controller{&front, &left, &right, &dust, &motor, &cleaner, &nav};
+    RvcController controller{&front, &left, &dust, &motor, &cleaner, &nav};
 };
 
 // ── lifecycle ─────────────────────────────────────────────────────────────────
@@ -88,45 +91,60 @@ TEST_F(RvcControllerTest, FrontObstacleOpenSidesTurnsLeft) {
     controller.start();
     motor.log.clear();
     left.state  = false;
-    right.state = false;
+    front.state = false;  // [추가] Right Scan reports open.
 
     controller.onFrontObstacleDetected();
 
-    // STOP → LEFT → FORWARD
-    ASSERT_GE(motor.log.size(), 3U);
+    // STOP -> RIGHT scan -> LEFT restore -> LEFT avoid -> FORWARD
+    ASSERT_GE(motor.log.size(), 5U);
     EXPECT_EQ(motor.log[0], Direction::STOP);
-    EXPECT_EQ(motor.log[1], Direction::LEFT);
-    EXPECT_EQ(motor.log[2], Direction::FORWARD);
+    EXPECT_EQ(motor.log[1], Direction::RIGHT);
+    EXPECT_EQ(motor.log[2], Direction::LEFT);
+    EXPECT_EQ(motor.log[3], Direction::LEFT);
+    EXPECT_EQ(motor.log[4], Direction::FORWARD);
 }
 
 TEST_F(RvcControllerTest, FrontObstacleLeftBlockedTurnsRight) {
     controller.start();
     motor.log.clear();
     left.state  = true;
-    right.state = false;
+    front.state = false;  // [추가] Right Scan reports open.
 
     controller.onFrontObstacleDetected();
 
-    ASSERT_GE(motor.log.size(), 3U);
+    ASSERT_GE(motor.log.size(), 5U);
     EXPECT_EQ(motor.log[0], Direction::STOP);
     EXPECT_EQ(motor.log[1], Direction::RIGHT);
-    EXPECT_EQ(motor.log[2], Direction::FORWARD);
+    EXPECT_EQ(motor.log[2], Direction::LEFT);
+    EXPECT_EQ(motor.log[3], Direction::RIGHT);
+    EXPECT_EQ(motor.log[4], Direction::FORWARD);
 }
 
-TEST_F(RvcControllerTest, SurroundedEscapesBackwardThenLeftThenForward) {
+TEST_F(RvcControllerTest, SurroundedEscapesBackwardThenLeftThenForwardByTick) {
     controller.start();
     motor.log.clear();
     left.state  = true;
-    right.state = true;
+    front.state = true;  // [추가] Right Scan reports blocked.
 
     controller.onFrontObstacleDetected();
 
-    // STOP → BACKWARD → LEFT → FORWARD
-    ASSERT_GE(motor.log.size(), 4U);
+    // [변경] STOP -> RIGHT scan -> LEFT restore, then BACKWARD -> LEFT -> FORWARD by tick.
+    ASSERT_GE(motor.log.size(), 3U);
     EXPECT_EQ(motor.log[0], Direction::STOP);
-    EXPECT_EQ(motor.log[1], Direction::BACKWARD);
+    EXPECT_EQ(motor.log[1], Direction::RIGHT);
     EXPECT_EQ(motor.log[2], Direction::LEFT);
-    EXPECT_EQ(motor.log[3], Direction::FORWARD);
+
+    controller.onTick();
+    ASSERT_GE(motor.log.size(), 4U);
+    EXPECT_EQ(motor.log[3], Direction::BACKWARD);
+
+    controller.onTick();
+    ASSERT_GE(motor.log.size(), 5U);
+    EXPECT_EQ(motor.log[4], Direction::LEFT);
+
+    controller.onTick();
+    ASSERT_GE(motor.log.size(), 6U);
+    EXPECT_EQ(motor.log[5], Direction::FORWARD);
 }
 
 TEST_F(RvcControllerTest, FrontObstacleIgnoredWhenIdle) {

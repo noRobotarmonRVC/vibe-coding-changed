@@ -1,5 +1,16 @@
 # AGENTS.md
 
+## Change Trace - 2026-05-29
+
+### [추가]
+- Added repository-wide trace convention for the Right Scan / tick escape change.
+
+### [삭제]
+- Removed dedicated RightSensor from the active change intent.
+
+### [변경]
+- Changed future agent expectations: requirements, design, code, and tests must all mark [추가], [삭제], and [변경] for this change family.
+
 ## Project Outline
 - Goal : Use OOAD based on UP and Make RVC Control SW, RVC UI and RVC Simulator
 - Outputs : SRS, SDD, Code, UT, ST, SA, Simulator

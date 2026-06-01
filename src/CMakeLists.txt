@@ -16,7 +16,7 @@ add_library(rvc_core
     domain/DefaultNavigationStrategy.cpp
     hal/FrontSensor.cpp
     hal/LeftSensor.cpp
-    hal/RightSensor.cpp
+    # [삭제] hal/RightSensor.cpp is intentionally inactive; right detection uses FrontSensor right scan.
     hal/DustSensor.cpp
     app/RvcController.cpp
     simulator/Simulator.cpp
@@ -24,6 +24,10 @@ add_library(rvc_core
     ui/GridDisplay.cpp
 )
 target_include_directories(rvc_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+if(MSVC)
+    # [추가] Keep Korean trace comments readable when building with MSVC.
+    target_compile_options(rvc_core PUBLIC /utf-8)
+endif()
 
 # ── main executable ───────────────────────────────────────────────────────────
 add_executable(rvc_main app/main.cpp)

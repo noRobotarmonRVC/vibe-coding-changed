@@ -1,5 +1,17 @@
 # SW Architecture Document
 
+## Design Change Trace - 2026-05-29
+
+### [추가]
+- Added AD-11 for FrontSensor-based Right Scan.
+- Added AD-12 for tick-by-tick ESCAPING.
+
+### [삭제]
+- Removed dedicated RightSensor from active controller and build architecture.
+
+### [변경]
+- Changed front-obstacle handling and simulator integration to use Right Scan.
+
 ## 1. Overview
 
 The RVC Control SW follows a **layered architecture** with a strict dependency rule: upper layers depend on lower layers; lower layers never depend on upper layers. All cross-layer communication uses interfaces, keeping the system testable and extensible.
@@ -22,7 +34,7 @@ The RVC Control SW follows a **layered architecture** with a strict dependency r
 │   INavigationStrategy                             │
 ├──────────────────────────────────────────────────┤
 │        Hardware Abstraction Layer (HAL)           │
-│   FrontSensor  LeftSensor  RightSensor            │
+│   FrontSensor  LeftSensor                        │
 │   DustSensor  (Motor/Cleaner adapters)            │
 └──────────────────────────────────────────────────┘
 ```
@@ -54,7 +66,7 @@ The RVC Control SW follows a **layered architecture** with a strict dependency r
 │           │                                                  │
 │    ┌──────┴───────────────────────────────────┐             │
 │    │               HAL                         │             │
-│    │  FrontSensor LeftSensor RightSensor       │             │
+│    │  FrontSensor LeftSensor                  │             │
 │    │  DustSensor  MotorAdapter CleanerAdapter  │             │
 │    └──────────────────────────────────────────┘             │
 └─────────────────────────────────────────────────────────────┘
@@ -78,11 +90,11 @@ The RVC Control SW follows a **layered architecture** with a strict dependency r
 
 ### AD-02: Interrupt vs. Polling for Sensors
 
-**Decision:** `FrontSensor` is interrupt-driven (`onInterrupt()` sets a flag, `onFrontObstacleDetected()` is called by the controller); Left, Right, and Dust sensors are polled each Tick.
+**Decision:** `FrontSensor` is interrupt-driven (`onInterrupt()` sets a flag, `onFrontObstacleDetected()` is called by the controller); Left and Dust sensors are polled each Tick. Right-side obstacle checks are performed by rotating right, sampling the Front Sensor, and rotating left to restore heading.
 
 **Rationale:** FUNC-01 requires immediate front-obstacle response. FUNC-02 defines the other sensors as periodic. Mixing both models requires the controller to handle both signal delivery paths.
 
-**Consequence:** `FrontSensor` has an `onInterrupt()` entry point separate from `detect()`; the system ISR must call it. All other sensors use only `detect()`.
+**Consequence:** `FrontSensor` has an `onInterrupt()` entry point separate from `detect()`; the system ISR must call it. `RvcController` no longer depends on a dedicated `RightSensor`.
 
 ---
 
@@ -116,6 +128,22 @@ The RVC Control SW follows a **layered architecture** with a strict dependency r
 
 ---
 
+### AD-11: Right Scan Replaces RightSensor
+
+**Decision:** Dedicated `RightSensor` is removed from active controller dependencies. Right-side detection is performed by a right turn, `FrontSensor::detect()`, and left turn restore.
+
+**Trace:** See `docs/decisions/2026-05-29-right-scan-and-tick-escape.md` for [추가], [삭제], and [변경] details.
+
+---
+
+### AD-12: ESCAPING Advances One Command per Tick
+
+**Decision:** Surrounded escape is no longer completed inside one front-obstacle event. The controller stays in `ESCAPING` and emits `BACKWARD`, `LEFT`, and `FORWARD` across separate ticks.
+
+**Trace:** See `docs/decisions/2026-05-29-right-scan-and-tick-escape.md` for [추가], [삭제], and [변경] details.
+
+---
+
 ## 5. Source Directory Layout
 
 ```
@@ -135,7 +163,6 @@ src/
 ├── hal/
 │   ├── FrontSensor.hpp / .cpp
 │   ├── LeftSensor.hpp / .cpp
-│   ├── RightSensor.hpp / .cpp
 │   └── DustSensor.hpp / .cpp
 └── app/
     ├── RvcController.hpp / .cpp
