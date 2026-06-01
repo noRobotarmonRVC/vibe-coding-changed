@@ -1,8 +1,6 @@
 #include <gtest/gtest.h>
 #include "domain/DefaultNavigationStrategy.hpp"
 
-// [변경] is_right_blocked now represents Right Scan blocked, not RightSensor polling.
-
 class DefaultNavigationStrategyTest : public ::testing::Test {
 protected:
     DefaultNavigationStrategy strategy;
@@ -13,31 +11,18 @@ TEST_F(DefaultNavigationStrategyTest, ForwardWhenAllClear) {
     EXPECT_EQ(strategy.navigate(data), Direction::FORWARD);
 }
 
-TEST_F(DefaultNavigationStrategyTest, LeftWhenFrontBlockedAndBothSidesOpen) {
+TEST_F(DefaultNavigationStrategyTest, LeftWhenFrontBlockedLeftOpen) {
     SensorData data;
     data.is_front_blocked = true;
     EXPECT_EQ(strategy.navigate(data), Direction::LEFT);
 }
 
-TEST_F(DefaultNavigationStrategyTest, RightWhenFrontAndLeftBlocked) {
+// No right sensor: front + left blocked yields BACKWARD, which signals the
+// controller to probe the right side (rotate + front sensor) before escaping.
+TEST_F(DefaultNavigationStrategyTest, BackwardWhenFrontAndLeftBlocked) {
     SensorData data;
     data.is_front_blocked = true;
     data.is_left_blocked  = true;
-    EXPECT_EQ(strategy.navigate(data), Direction::RIGHT);
-}
-
-TEST_F(DefaultNavigationStrategyTest, LeftWhenFrontAndRightBlocked) {
-    SensorData data;
-    data.is_front_blocked = true;
-    data.is_right_blocked = true;
-    EXPECT_EQ(strategy.navigate(data), Direction::LEFT);
-}
-
-TEST_F(DefaultNavigationStrategyTest, BackwardWhenSurrounded) {
-    SensorData data;
-    data.is_front_blocked = true;
-    data.is_left_blocked  = true;
-    data.is_right_blocked = true;
     EXPECT_EQ(strategy.navigate(data), Direction::BACKWARD);
 }
 

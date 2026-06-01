@@ -50,21 +50,18 @@ private:
     [[nodiscard]] static Heading  turnLeft(Heading h);
     [[nodiscard]] static Heading  turnRight(Heading h);
     void     applyPendingMotorCommands();
-    void     triggerObstacleWithSideReadings(bool is_left_blocked, bool is_right_blocked);
 
     int     _grid_width;
     int     _grid_height;
     Position _pos;
     Heading  _heading;
     size_t   _motor_log_applied = 0;
-    // [추가] Keeps simulator ticks aligned with controller ESCAPING steps.
-    int      _escape_ticks_remaining = 0;
+    bool     _prev_front_blocked = false;
     std::set<std::pair<int,int>> _obstacles;
     std::set<std::pair<int,int>> _dust_cells;
 
     SimulatedSensor           _front;
     SimulatedSensor           _left;
-    // [삭제] Dedicated right sensor; right blockage is injected into _front for right scan.
     SimulatedSensor           _dust;
     SimulatedMotor            _motor;
     SimulatedCleaner          _cleaner;

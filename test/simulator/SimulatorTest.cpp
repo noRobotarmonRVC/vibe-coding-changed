@@ -1,8 +1,7 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cstdlib>
 #include "simulator/Simulator.hpp"
-
-// [변경] Simulator tests trace Right Scan injection and one-cell-per-tick escape.
 
 TEST(SimulatorTest, StartMovesForwardAndCleansOn) {
     Simulator sim;
@@ -38,48 +37,35 @@ TEST(SimulatorTest, DustPowersUpCleanerThenRestores) {
     EXPECT_EQ(sim.lastPower(), CleanPower::ON);
 }
 
+// Front obstacle with the left side open: rotate left and resume forward.
 TEST(SimulatorTest, FrontObstacleAvoidanceResumesForward) {
-    Simulator sim;
+    Simulator sim(20, 12, {5, 5}, Heading::EAST);
+    sim.placeObstacle(6, 5);  // directly ahead (EAST)
     sim.start();
-    sim.injectLeft(false);
-    sim.injectFront(false);  // [추가] Manual Right Scan result uses front injection.
 
-    sim.triggerFrontObstacle();
+    for (int i = 0; i < 4; ++i) { sim.tick(); }
 
     EXPECT_EQ(sim.lastDirection(), Direction::FORWARD);
 }
 
-TEST(SimulatorTest, SurroundedEscapeMovesOneCellPerTick) {
-    Simulator sim;
+// Front + left + right(probed) all blocked: rotate right to probe, face back,
+// then back up and eventually resume forward.
+TEST(SimulatorTest, SurroundedEscapeBacksUpThenResumesForward) {
+    Simulator sim(20, 12, {5, 5}, Heading::EAST);
+    sim.placeObstacle(6, 5);  // front  (EAST)
+    sim.placeObstacle(5, 4);  // left   (NORTH)
+    sim.placeObstacle(5, 6);  // right  (SOUTH, found via the probe)
     sim.start();
-    sim.injectLeft(true);
-    sim.injectFront(true);  // [추가] Manual Right Scan result uses front injection.
-    const Position start = sim.pos();
 
-    sim.triggerFrontObstacle();
+    for (int i = 0; i < 8; ++i) { sim.tick(); }
 
-    EXPECT_EQ(sim.pos().x, start.x);
-    EXPECT_EQ(sim.pos().y, start.y);
-
-    // [변경] Escape advances one movement command per tick.
-    sim.tick();
-    EXPECT_EQ(sim.lastDirection(), Direction::BACKWARD);
-    EXPECT_EQ(sim.pos().x, start.x - 1);
-    EXPECT_EQ(sim.pos().y, start.y);
-
-    const Position after_backward = sim.pos();
-    sim.tick();
-    EXPECT_EQ(sim.lastDirection(), Direction::LEFT);
-    EXPECT_EQ(sim.pos().x, after_backward.x);
-    EXPECT_EQ(sim.pos().y, after_backward.y);
-
-    sim.tick();
+    const auto& log = sim.motorLog();
+    EXPECT_NE(std::find(log.begin(), log.end(), Direction::BACKWARD), log.end());
     EXPECT_EQ(sim.lastDirection(), Direction::FORWARD);
-    EXPECT_EQ(sim.pos().x, after_backward.x);
-    EXPECT_EQ(sim.pos().y, after_backward.y - 1);
 }
 
-TEST(SimulatorTest, NeverMovesMoreThanOneCellPerTickDuringSurroundedEscape) {
+// Regression: backing up must never move more than one cell in a single tick.
+TEST(SimulatorTest, NeverMovesMoreThanOneCellPerTick) {
     Simulator sim(20, 12, {5, 5}, Heading::EAST);
     sim.placeObstacle(6, 5);
     sim.placeObstacle(5, 4);
@@ -87,28 +73,13 @@ TEST(SimulatorTest, NeverMovesMoreThanOneCellPerTickDuringSurroundedEscape) {
     sim.start();
 
     Position prev = sim.pos();
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 12; ++i) {
         sim.tick();
-        const Position now = sim.pos();
-        const int distance = std::abs(now.x - prev.x) + std::abs(now.y - prev.y);
-        EXPECT_LE(distance, 1);
+        Position now = sim.pos();
+        int manhattan = std::abs(now.x - prev.x) + std::abs(now.y - prev.y);
+        EXPECT_LE(manhattan, 1);
         prev = now;
     }
-}
-
-TEST(SimulatorTest, BacksUpAlongOriginalHeadingAfterRightScanRestore) {
-    Simulator sim(20, 12, {5, 5}, Heading::EAST);
-    sim.placeObstacle(6, 5);
-    sim.placeObstacle(5, 4);
-    sim.placeObstacle(5, 6);
-    sim.start();
-
-    const Position start = sim.pos();
-    sim.tick();  // obstacle event: stop, right scan, left restore
-    sim.tick();  // escape step 0: backward
-
-    EXPECT_LT(sim.pos().x, start.x);
-    EXPECT_EQ(sim.pos().y, start.y);
 }
 
 TEST(SimulatorTest, StopHaltsMotorAndCleaner) {
@@ -124,4 +95,51 @@ TEST(SimulatorTest, TickIgnoredWhenIdle) {
     sim.tick();
     EXPECT_TRUE(sim.motorLog().empty());
     EXPECT_TRUE(sim.cleanerLog().empty());
+}
+
+// Edge-triggered interrupt: STOP is issued once even while the front stays blocked.
+TEST(SimulatorTest, FrontInterruptFiresOnceWhileStuck) {
+    Simulator sim(20, 12, {5, 5}, Heading::EAST);
+    // fully boxed in: front, left, right (probed), and behind all blocked
+    sim.placeObstacle(6, 5);  // front  (EAST)
+    sim.placeObstacle(5, 4);  // left   (NORTH)
+    sim.placeObstacle(5, 6);  // right  (SOUTH)
+    sim.placeObstacle(4, 5);  // behind (WEST)
+    sim.start();
+
+    for (int i = 0; i < 10; ++i) { sim.tick(); }
+
+    const auto& log = sim.motorLog();
+    EXPECT_EQ(std::count(log.begin(), log.end(), Direction::STOP), 1);
+}
+
+// Dead-end corridor: backs up over multiple ticks (one cell each) to escape.
+TEST(SimulatorTest, DeadEndBacksUpMultipleTimes) {
+    Simulator sim(20, 12, {5, 5}, Heading::EAST);
+    sim.placeObstacle(6, 5);                                    // front
+    sim.placeObstacle(4, 4); sim.placeObstacle(5, 4); sim.placeObstacle(6, 4);  // north wall
+    sim.placeObstacle(4, 6); sim.placeObstacle(5, 6); sim.placeObstacle(6, 6);  // south wall
+    sim.start();
+
+    for (int i = 0; i < 12; ++i) { sim.tick(); }
+
+    const auto& log = sim.motorLog();
+    EXPECT_GE(std::count(log.begin(), log.end(), Direction::BACKWARD), 2);
+}
+
+// After probing right and finding it blocked, the RVC restores its original
+// heading before backing up — so it reverses opposite to the start heading.
+TEST(SimulatorTest, BacksUpAlongOriginalHeadingAfterProbe) {
+    Simulator sim(20, 12, {5, 5}, Heading::EAST);
+    sim.placeObstacle(6, 5);  // front
+    sim.placeObstacle(5, 4);  // left
+    sim.placeObstacle(5, 6);  // right (probed)
+    sim.start();
+
+    Position start = sim.pos();
+    for (int i = 0; i < 5; ++i) { sim.tick(); }
+
+    // reversed westward (opposite of original EAST heading)
+    EXPECT_LT(sim.pos().x, start.x);
+    EXPECT_EQ(sim.pos().y, start.y);
 }
