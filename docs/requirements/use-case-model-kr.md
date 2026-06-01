@@ -12,7 +12,7 @@
 
 ### [변경]
 - 오른쪽 장애물 감지를 Right Sensor polling에서 Front Sensor right scan으로 변경한다.
-- UC-04의 `BACKWARD`, `LEFT`, `FORWARD`가 서로 다른 tick에서 실행되도록 변경한다.
+- UC-04의 escape가 `BACKWARD` 후 side evaluation으로 돌아가도록 변경한다.
 
 ---
 
@@ -69,7 +69,7 @@ Dust Sensor   -> UC-05 Intensify Cleaning
 |---|---|
 | Primary Actor | Front Sensor |
 | 사전 조건 | RVC가 cleaning 중이고 전방 장애물이 감지되었다. |
-| 기본 흐름 | 정지 후 오른쪽으로 회전해 Front Sensor로 Right Scan을 수행하고, 왼쪽으로 회전해 heading을 복구한다. 이후 Left Sensor와 Right Scan 결과로 회피 방향을 결정한다. |
+| 기본 흐름 | 전방 장애물 interrupt에서는 즉시 정지만 수행한다. 이후 tick에서 Left Sensor를 확인하고, left가 막혔으면 오른쪽으로 회전해 `CHECKING_RIGHT` 상태에서 Front Sensor로 기존 오른쪽 방향을 확인한다. |
 | 사후 조건 | 회피 명령 후 전진 청소로 복귀한다. |
 
 ### UC-04: 포위 상태 탈출
@@ -78,7 +78,7 @@ Dust Sensor   -> UC-05 Intensify Cleaning
 |---|---|
 | Primary Actor | Front Sensor, Left Sensor, Right Scan |
 | 사전 조건 | Front, Left, Right Scan 결과가 모두 blocked이다. |
-| 기본 흐름 | 장애물 감지 tick에서는 정지와 scan만 수행한다. 다음 tick에 `BACKWARD`, 그 다음 tick에 `LEFT`, 그 다음 tick에 `FORWARD`를 수행한다. |
+| 기본 흐름 | 장애물 감지 interrupt에서는 정지만 수행한다. 이후 tick에서 left 확인, right probe, heading 복구를 진행하고, 포위 상태이면 `BACKWARD` 한 칸 후 다시 side evaluation으로 돌아간다. |
 | 사후 조건 | RVC가 cleaning 상태로 복귀한다. |
 
 ### UC-05: 청소 강도 높이기

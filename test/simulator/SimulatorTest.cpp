@@ -3,6 +3,8 @@
 #include <cstdlib>
 #include "simulator/Simulator.hpp"
 
+// [추가] Integrated Claude design coverage for edge-triggered probe and escape.
+
 TEST(SimulatorTest, StartMovesForwardAndCleansOn) {
     Simulator sim;
     sim.start();

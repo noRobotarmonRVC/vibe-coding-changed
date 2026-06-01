@@ -12,7 +12,7 @@
 
 ### [변경]
 - Changed right-side obstacle detection from periodic Right Sensor polling to Front Sensor right scan.
-- Changed UC-04 main success scenario so backward, turn, and forward commands occur on separate ticks.
+- Changed UC-04 so escape backs up one cell, then returns to side evaluation.
 
 ## 1. Actors
 
@@ -122,23 +122,23 @@ graph LR
 | **ID** | UC-03 |
 | **Name** | Avoid Front Obstacle |
 | **Primary Actor** | Front Sensor |
-| **Brief Description** | When a front obstacle is detected (and the RVC is not fully surrounded), the RVC stops, scans the right side, turns to an open side, and resumes forward navigation. |
-| **Preconditions** | Cleaning session is active. Front Sensor fires True. Left side or Right Scan is not blocked. |
+| **Brief Description** | When a front obstacle is detected, the RVC stops immediately. Later ticks evaluate the left side and, if needed, probe the right side by rotating and reading the Front Sensor. |
+| **Preconditions** | Cleaning session is active. Front Sensor fires True. |
 | **Postconditions** | RVC is moving forward on a new heading, cleaner remains On. |
 
 **Main Success Scenario:**
 
 1. Front Sensor triggers interrupt with True.
-2. System commands Motor: Stop.
-3. System reads Left Sensor and performs a Right Scan.
-4. At least one side is open (Left = False OR Right Scan = False).
-5. System selects an open side (Left or Right) and commands Motor: Turn to that side.
-6. System commands Motor: Forward.
-7. Cleaner remains On.
+2. System commands Motor: Stop and enters `AVOIDING_OBSTACLE`.
+3. On a later Tick, system reads Left Sensor.
+4. If Left = False, system commands Motor: Left and returns to cleaning.
+5. If Left = True, system commands Motor: Right and enters `CHECKING_RIGHT`.
+6. On a later Tick, system reads Front Sensor as the old right side.
+7. If right side is open, system resumes cleaning on the new heading.
 
 **Alternative Flow — Both sides also blocked:**
 
-- Step 4: Left = True AND Right Scan = blocked → transfer to UC-04.
+- Step 6: Right Scan = blocked → restore original heading and transfer to UC-04.
 
 ---
 
@@ -149,16 +149,16 @@ graph LR
 | **ID** | UC-04 |
 | **Name** | Escape Surrounded State |
 | **Primary Actor** | Front Sensor, Left Sensor, Right Scan |
-| **Brief Description** | When obstacles are detected in front, left, and right scan direction, the RVC reverses, turns, and resumes across separate ticks. |
+| **Brief Description** | When front, left, and probed right are blocked, the RVC backs up one cell and then re-evaluates the side options. |
 | **Preconditions** | Cleaning session is active. Front = True AND Left = True AND Right Scan = blocked. |
 | **Postconditions** | RVC is moving forward on a new heading, cleaner remains On. |
 
 **Main Success Scenario:**
 
-1. System detects Front = True AND Left = True AND Right Scan = blocked.
-2. On the next Tick, system commands Motor: Backward.
-3. On the next Tick, system commands Motor: Turn to selected direction.
-4. On the next Tick, system commands Motor: Forward.
+1. System detects Front = True, Left = True, and Right Scan = blocked.
+2. System restores the original heading with `LEFT` and enters `ESCAPING`.
+3. On the next Tick, system commands Motor: Backward.
+4. System returns to `AVOIDING_OBSTACLE` and re-evaluates side options on later ticks.
 5. Cleaner remains On.
 
 ---

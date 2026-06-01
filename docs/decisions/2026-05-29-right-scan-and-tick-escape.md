@@ -1,31 +1,33 @@
-# Architecture Decisions - 2026-05-29 (Right Scan and Tick Escape)
+# Architecture Decisions - 2026-05-29 / Updated 2026-06-01
 
-## AD-11: Replace RightSensor with FrontSensor Right Scan
+## AD-11: Replace RightSensor with FrontSensor Right Probe
 
 ### [삭제]
 - Removed `RightSensor` from the active dependency graph of `RvcController`.
 - Removed `hal/RightSensor.cpp` from the active CMake build target.
 - Removed `Simulator::injectRight()` from the simulator control API.
+- Removed `SensorData::is_right_blocked` from the active domain data structure.
 
 ### [추가]
-- Added the **Right Scan** behavior: stop, turn right, read `FrontSensor::detect()`, then turn left to restore the original heading.
-- Added documentation terminology for `Right Scan` as the source of `SensorData::is_right_blocked`.
+- Added `CHECKING_RIGHT` as the state where the robot has rotated right and `FrontSensor::detect()` represents the old right side.
+- Added edge-triggered simulator interrupt handling so front obstacle detection starts avoidance once, then later ticks progress the state machine.
 
 ### [변경]
-- `RvcController` now receives `front_sensor`, `left_sensor`, and `dust_sensor` only.
-- `Simulator` now injects right-side grid blockage into the front sensor before front-obstacle handling.
-- Requirements and design documents now describe right-side detection as front-sensor scanning instead of a dedicated periodic right sensor.
+- Right-side detection is now modeled as `AVOIDING_OBSTACLE -> CHECKING_RIGHT`, not as a field copied into `SensorData`.
+- `DefaultNavigationStrategy` returns `BACKWARD` for front+left blocked as a signal to probe right before deciding escape.
+- Requirements and design documents describe right-side detection as FrontSensor probing after a right turn.
 
 ## AD-12: Escape Movement Advances One Command per Tick
 
 ### [삭제]
 - Removed the atomic `STOP -> BACKWARD -> LEFT -> FORWARD` escape sequence from a single front-obstacle event.
+- Removed `_escape_step` and `continueEscaping()` from the active controller design.
 
 ### [추가]
-- Added `_escape_step` in `RvcController` to track escape progress across ticks.
-- Added simulator escape tick tracking so integration tests advance escape movement one tick at a time.
+- Added explicit `ESCAPING` behavior that emits one `BACKWARD` command per tick.
+- Added simulator tests for dead-end backing, interrupt edge behavior, original-heading backup, and one-cell-per-tick movement.
 
 ### [변경]
-- `ESCAPING` remains active after surrounded detection.
-- Each following tick emits exactly one movement command in order: `BACKWARD`, `LEFT`, `FORWARD`.
-- Tests now verify that backward movement changes position by one cell per tick, matching forward movement semantics.
+- `onFrontObstacleDetected()` issues `STOP` only and sets `AVOIDING_OBSTACLE`.
+- Later ticks perform side evaluation, right probe, heading restore, and backward escape.
+- After `BACKWARD`, the controller returns to `AVOIDING_OBSTACLE` to re-evaluate the environment.

@@ -1,68 +1,91 @@
 # System Operation Interface
 
-## SRS Change Trace - 2026-05-29
+## SRS Change Trace - 2026-06-01
 
 ### [추가]
-- 오른쪽 장애물 판단을 위한 `Right Scan Result` 입력 의미를 추가한다.
-- ESCAPING 상태에서 tick별 이동 명령을 관찰할 수 있어야 한다는 인터페이스 기대를 추가한다.
+- 시스템에서 관찰 가능한 오른쪽 probe 단계로 `CHECKING_RIGHT`를 추가한다.
+- simulator 계약에 front obstacle edge-trigger 처리를 추가한다.
 
 ### [삭제]
-- 활성 시스템 입력에서 전용 `Right Sensor` 입력을 삭제한다.
+- 시스템 operation interface에서 Right Sensor polling을 삭제한다.
+- `onFrontObstacleDetected()`가 모든 side sensor를 즉시 읽는다는 가정을 삭제한다.
 
 ### [변경]
-- 장애물 회피 흐름의 오른쪽 상태 출처를 Right Sensor에서 Front Sensor Right Scan으로 변경한다.
+- `onFrontObstacleDetected()`는 `STOP`만 발행하고, side evaluation은 이후 `tick()`으로 미루도록 변경한다.
+- ESCAPING은 tick마다 `BACKWARD`를 발행한 뒤 다시 side evaluation으로 돌아가도록 변경한다.
 
 ---
 
-## 1. 목적
+## 1. 요약
 
-이 문서는 RVC Control SW가 외부 actor, sensor, actuator, simulator와 주고받는 시스템 수준 인터페이스를 정의한다.
-
----
-
-## 2. 입력 인터페이스
-
-| 인터페이스 | 방향 | 설명 |
+| Operation | Trigger Actor | 관련 UC |
 |---|---|---|
-| `startCleaning()` | User -> System | 청소 세션을 시작한다. |
-| `stopCleaning()` | User -> System | 청소 세션을 종료한다. |
-| `onFrontObstacleDetected()` | Front Sensor -> System | 전방 장애물 interrupt를 전달한다. |
-| `onTick()` | Timer -> System | 주기 제어 tick을 전달한다. |
-| `LeftSensor::detect()` | Sensor -> System | 왼쪽 장애물 상태를 반환한다. |
-| `FrontSensor::detect()` during Right Scan | Sensor -> System | 오른쪽 방향으로 회전한 상태에서 오른쪽 장애물 상태를 반환한다. |
-| `DustSensor::detect()` | Sensor -> System | 먼지 감지 상태를 반환한다. |
+| `startCleaning()` | User | UC-01 |
+| `tick()` | Timer | UC-02, UC-03, UC-04, UC-05 |
+| `onFrontObstacleDetected()` | Front Sensor | UC-03, UC-04 |
+| `stopCleaning()` | User | UC-06 |
 
 ---
 
-## 3. 출력 인터페이스
+## 2. System Operations
 
-| 인터페이스 | 방향 | 설명 |
+### SO-01: `startCleaning()`
+
+RVC를 `IDLE`에서 `CLEANING`으로 전환하고, cleaner를 `ON`으로 설정하며, motor에 `FORWARD`를 명령한다.
+
+### SO-02: `tick()`
+
+활성 상태의 주기 동작을 진행한다.
+
+| 현재 상태 | 주요 작업 | 가능한 출력 |
 |---|---|---|
-| `MotorController::move(Direction)` | System -> Motor | 이동, 회전, 정지 명령을 전달한다. |
-| `CleanerController::setPower(CleanPower)` | System -> Cleaner | 청소 장치 전원 또는 강도 명령을 전달한다. |
+| `CLEANING` | dust 확인, 일반 이동 | `FORWARD`, 필요 시 `POWER_UP` |
+| `INTENSIFYING` | power-up duration countdown | duration 종료 시 `ON` |
+| `AVOIDING_OBSTACLE` | Left Sensor를 읽고 좌회전 또는 오른쪽 probe 결정 | `LEFT` 또는 `RIGHT` |
+| `CHECKING_RIGHT` | 기존 오른쪽 방향을 바라보는 상태에서 Front Sensor 확인 | blocked면 `LEFT`, open이면 cleaning 복귀 |
+| `ESCAPING` | 한 칸 후진 후 재평가 | `BACKWARD` |
+
+### SO-03: `onFrontObstacleDetected()`
+
+Front Sensor가 보내는 interrupt 기반 전방 장애물 알림이다.
+
+계약:
+- 시스템이 idle이면 아무 것도 하지 않는다.
+- 그 외 상태에서는 `STOP`을 발행한다.
+- 상태를 `AVOIDING_OBSTACLE`로 설정한다.
+- interrupt handler 안에서 Right Scan을 수행하지 않는다. 오른쪽 probe는 이후 `tick()` 호출로 진행한다.
+
+### SO-04: `stopCleaning()`
+
+RVC를 `IDLE`로 전환하고, motor에 `STOP`, cleaner에 `OFF`를 명령한다.
 
 ---
 
-## 4. 주요 동작 계약
+## 3. Right Probe Sequence
 
-### 전방 장애물 처리
+```text
+onFrontObstacleDetected()
+  -> STOP
+  -> AVOIDING_OBSTACLE
 
-1. System은 먼저 `STOP`을 명령한다.
-2. System은 `RIGHT` 회전으로 오른쪽 scan 자세를 만든다.
-3. System은 Front Sensor를 읽어 Right Scan 결과를 얻는다.
-4. System은 `LEFT` 회전으로 원래 heading을 복구한다.
-5. Left Sensor와 Right Scan 결과를 navigation strategy에 전달한다.
+tick()
+  -> left open이면 LEFT, CLEANING
+  -> left blocked이면 RIGHT, CHECKING_RIGHT
 
-### ESCAPING 처리
+tick()
+  -> FrontSensor로 기존 오른쪽 방향 확인
+  -> open이면 CLEANING
+  -> blocked이면 LEFT, ESCAPING
 
-- 장애물 감지 tick에서는 후진하지 않는다.
-- 다음 tick마다 하나의 motor command만 발생한다.
-- 기본 순서는 `BACKWARD`, `LEFT`, `FORWARD`이다.
+tick()
+  -> BACKWARD
+  -> AVOIDING_OBSTACLE
+```
 
 ---
 
-## 5. Simulator 관찰 계약
+## 4. Simulator 계약
 
-- simulator는 한 tick에 실제 위치 이동을 한 칸 이하로 반영한다.
-- Right Scan 테스트는 별도 right sensor injection이 아니라 front sensor injection으로 표현한다.
-- motor log와 cleaner log는 controller의 observable behavior 검증에 사용한다.
+- simulator는 front가 clear에서 blocked로 바뀌는 edge에서만 front obstacle interrupt를 발생시킨다.
+- front가 계속 blocked인 동안에는 controller가 `tick()`으로 상태를 진행한다.
+- 각 simulator tick은 새 motor command를 반영하며, 테스트는 실제 이동이 한 칸 이하인지 검증한다.

@@ -37,12 +37,12 @@
 
 - controller는 concrete HAL class가 아니라 interface에 의존한다.
 - RightSensor 파일은 legacy로 남길 수 있으나 active build target에서는 제외한다.
-- 오른쪽 감지는 Right Scan 결과로 표현하고, `SensorData::is_right_blocked`는 이 결과를 담는다.
+- 오른쪽 감지는 `CHECKING_RIGHT` 상태에서 `FrontSensor::detect()`로 확인하며, `SensorData`에는 오른쪽 전용 필드를 두지 않는다.
 
 ---
 
 ## 4. 테스트 제약
 
-- `RvcControllerTest`는 Right Scan 시 `RIGHT`, front detect, `LEFT` 복구 순서를 검증해야 한다.
+- `RvcControllerTest`는 Right Scan 시 `RIGHT`, front detect, `LEFT` 복구, `BACKWARD` 진행이 tick별로 관찰되는지 검증해야 한다.
 - `SimulatorTest`는 ESCAPING 중 tick마다 한 칸 이하로만 위치가 변하는지 검증해야 한다.
 - 기존 start, stop, dust, normal tick 동작은 유지되어야 한다.

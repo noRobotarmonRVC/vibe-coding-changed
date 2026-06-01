@@ -1,23 +1,18 @@
 # System Operation Interface
 
-| «interface» RVCSystem | `startCleaning()` · `tick()` · `onFrontObstacleDetected()` · `stopCleaning()` |
-|---|---|
-
-## SRS Change Trace - 2026-05-29
+## SRS Change Trace - 2026-06-01
 
 ### [추가]
-- Added Right Scan as the system operation detail for right-side obstacle detection.
-- Added tick-by-tick ESCAPING behavior to `tick()`.
+- Added `CHECKING_RIGHT` as the system-visible right-probe phase.
+- Added edge-triggered front obstacle handling to the simulator contract.
 
 ### [삭제]
 - Removed Right Sensor polling from the system operation interface.
-- Removed single-event escape completion from `onFrontObstacleDetected()`.
+- Removed the assumption that `onFrontObstacleDetected()` reads all side sensors immediately.
 
 ### [변경]
-- Changed `onFrontObstacleDetected()` to stop, read Left Sensor, perform Right Scan, then decide AVOIDING_OBSTACLE or ESCAPING.
-- Changed ESCAPING motor sequence so `BACKWARD`, `TURN`, and `FORWARD` are emitted by later `tick()` calls.
-
-System Operations are derived from the system events identified in Use-Case scenarios. Each operation represents a message sent to the RVC system by an external actor.
+- Changed `onFrontObstacleDetected()` to issue `STOP` only and defer side evaluation to later `tick()` calls.
+- Changed ESCAPING so each tick emits `BACKWARD` and then re-enters side evaluation.
 
 ---
 
@@ -34,135 +29,63 @@ System Operations are derived from the system events identified in Use-Case scen
 
 ## 2. System Operations
 
----
-
 ### SO-01: `startCleaning()`
 
-| Field | Content |
-|---|---|
-| **Operation** | `startCleaning()` |
-| **Related UC** | UC-01: Start Cleaning Session |
-| **Trigger Actor** | User |
-| **Description** | Transitions the RVC from IDLE to CLEANING state, activates the cleaner, and begins forward motion. |
-| **Preconditions** | RVC is in IDLE state. |
-| **Postconditions** | RVC state = CLEANING. Motor command = FORWARD. Cleaner command = ON. |
-
-**Cross-references:** UC-01 Step 1–4
-
----
+Transitions the RVC from `IDLE` to `CLEANING`, sets cleaner power to `ON`, and commands `FORWARD`.
 
 ### SO-02: `tick()`
 
-| Field | Content |
-|---|---|
-| **Operation** | `tick()` |
-| **Related UC** | UC-02, UC-03, UC-04, UC-05 |
-| **Trigger Actor** | Timer |
-| **Description** | Periodic heartbeat that drives sensor polling and navigation decisions while the RVC is active. On each tick, the system reads Left and Dust sensors; right-side obstacle information is produced by a front-sensor right scan during front-obstacle handling. |
-| **Preconditions** | RVC is in an active state (CLEANING, AVOIDING_OBSTACLE, ESCAPING, or INTENSIFYING). |
-| **Postconditions** | Motor direction and cleaner state are updated based on current sensor readings. State may transition per the table below. |
+Periodic heartbeat for active behavior.
 
-**State transitions triggered by `tick()`:**
-
-| Sensor Reading | Resulting State | Motor | Cleaner |
-|---|---|---|---|
-| No obstacles, no dust | CLEANING | FORWARD | ON |
-| Front = True, Left or Right Scan open | AVOIDING_OBSTACLE | STOP → RIGHT scan → TURN → FORWARD | ON |
-| Front = True, Left = True, Right Scan = blocked | ESCAPING | BACKWARD → TURN → FORWARD across separate ticks | ON |
-| Dust = True | INTENSIFYING | FORWARD | POWER_UP |
-| Intensification duration elapsed | CLEANING | FORWARD | ON |
-
-**Cross-references:** UC-02 Main Scenario and Alternative Flows
-
----
+| Current State | Main Work | Possible Output |
+|---|---|---|
+| `CLEANING` | dust check, normal movement | `FORWARD`, optional `POWER_UP` |
+| `INTENSIFYING` | countdown power-up duration | `ON` when duration expires |
+| `AVOIDING_OBSTACLE` | read Left Sensor and choose left turn or right probe | `LEFT` or `RIGHT` |
+| `CHECKING_RIGHT` | read Front Sensor while facing old right side | `LEFT` if blocked, otherwise resume cleaning |
+| `ESCAPING` | back up one cell and re-evaluate | `BACKWARD` |
 
 ### SO-03: `onFrontObstacleDetected()`
 
-| Field | Content |
-|---|---|
-| **Operation** | `onFrontObstacleDetected()` |
-| **Related UC** | UC-03, UC-04 |
-| **Trigger Actor** | Front Sensor (interrupt-driven) |
-| **Description** | Interrupt-based notification that an obstacle has been detected directly ahead. Unlike `tick()`, this is asynchronous — the Front Sensor fires this event immediately upon detection, not on a polling cycle. |
-| **Preconditions** | RVC is in CLEANING or AVOIDING_OBSTACLE state. |
-| **Postconditions** | Motor command = STOP. System reads the Left Sensor and performs a right-side scan with the Front Sensor to determine next state (AVOIDING_OBSTACLE or ESCAPING). |
+Interrupt-based notification from Front Sensor.
 
-**Decision logic:**
-
-| Left Sensor | Right Scan | Resulting State |
-|---|---|---|
-| False (open) | any | AVOIDING_OBSTACLE — turn left |
-| any | False (open) | AVOIDING_OBSTACLE — turn right |
-| True | True | ESCAPING |
-
-**Cross-references:** UC-03 Step 1–3, UC-03 Alternative Flow, UC-04 Step 1
-
----
+Contract:
+- If the system is idle, do nothing.
+- Otherwise issue `STOP`.
+- Set state to `AVOIDING_OBSTACLE`.
+- Do not perform Right Scan inside this interrupt handler; right-side probing is advanced by later `tick()` calls.
 
 ### SO-04: `stopCleaning()`
 
-| Field | Content |
-|---|---|
-| **Operation** | `stopCleaning()` |
-| **Related UC** | UC-06: Stop Cleaning Session |
-| **Trigger Actor** | User |
-| **Description** | Terminates the active cleaning session, halts the motor, and turns off the cleaner. |
-| **Preconditions** | RVC is in any active state (CLEANING, AVOIDING_OBSTACLE, ESCAPING, INTENSIFYING). |
-| **Postconditions** | RVC state = IDLE. Motor command = STOP. Cleaner command = OFF. |
-
-**Cross-references:** UC-06 Step 1–4
+Transitions the RVC to `IDLE`, commands `STOP`, and sets cleaner power to `OFF`.
 
 ---
 
-## 3. System Sequence Diagram
+## 3. Right Probe Sequence
 
-### Scenario A: Normal Cleaning (no obstacles, no dust)
+```text
+onFrontObstacleDetected()
+  -> STOP
+  -> AVOIDING_OBSTACLE
 
-```
-User          RVC System       Timer
- |                |               |
- |--startCleaning()-->            |
- |                |               |
- |                |<----tick()----|
- |                |  [no obstacles, no dust]
- |                |  Motor: FORWARD, Cleaner: ON
- |                |               |
- |                |<----tick()----|
- |                |  (repeats)    |
- |                |               |
- |--stopCleaning()-->             |
- |                |               |
-```
+tick()
+  -> if left open: LEFT, CLEANING
+  -> if left blocked: RIGHT, CHECKING_RIGHT
 
-### Scenario B: Front Obstacle Avoidance
+tick()
+  -> FrontSensor detects old right side
+  -> if open: CLEANING
+  -> if blocked: LEFT, ESCAPING
 
-```
-User       Front Sensor     RVC System       Timer
- |               |               |               |
- |--startCleaning()------------>|               |
- |               |               |<----tick()----|
- |               |               |  Motor: FORWARD
- |               |               |               |
- |               |--onFrontObstacleDetected()--->|
- |               |               |  Motor: STOP
- |               |               |  [reads Left + performs Right Scan]
- |               |               |  Motor: TURN → FORWARD
- |               |               |               |
- |               |               |<----tick()----|
- |               |               |  (resumes navigation)
+tick()
+  -> BACKWARD
+  -> AVOIDING_OBSTACLE
 ```
 
-### Scenario C: Dust Intensification
+---
 
-```
-User          RVC System       Timer        Dust Sensor
- |                |               |               |
- |--startCleaning()-->            |               |
- |                |<----tick()----|               |
- |                |  [Dust = True from Dust Sensor]
- |                |  Cleaner: POWER_UP            |
- |                |               |               |
- |                |<----tick()----|               |
- |                |  [duration elapsed]           |
- |                |  Cleaner: ON (normal)         |
-```
+## 4. Simulator Contract
+
+- The simulator triggers front obstacle interrupt only on a clear-to-blocked edge.
+- While front remains blocked, the controller progresses through `tick()`.
+- Each simulator tick applies newly emitted motor commands and tests assert that physical movement is at most one cell.

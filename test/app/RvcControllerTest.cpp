@@ -85,6 +85,7 @@ TEST_F(RvcControllerTest, CleaningPowerRestoresAfterIntensifyDuration) {
 }
 
 // ── obstacle avoidance (multi-tick) ───────────────────────────────────────────
+// [변경] Right probing and escape are verified across ticks, not in one event.
 
 TEST_F(RvcControllerTest, FrontObstacleOnlyStopsThenWaits) {
     controller.start();

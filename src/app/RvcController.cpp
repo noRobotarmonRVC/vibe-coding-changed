@@ -39,6 +39,7 @@ void RvcController::onTick() {
             return;
 
         case RvcState::AVOIDING_OBSTACLE: {
+            // [변경] Side evaluation is advanced by tick after the front interrupt stops.
             SensorData data;
             data.is_front_blocked = true;
             data.is_left_blocked  = _left_sensor->detect();
@@ -53,6 +54,7 @@ void RvcController::onTick() {
         }
 
         case RvcState::CHECKING_RIGHT:
+            // [추가] Front sensor is reused after the robot rotates right.
             // Rotated right last tick, so the front sensor now faces the old right.
             if (_front_sensor->detect()) {
                 _motor->move(Direction::LEFT);   // right blocked too: face back, escape
@@ -63,6 +65,7 @@ void RvcController::onTick() {
             return;
 
         case RvcState::ESCAPING:
+            // [변경] Escape backs up one cell, then re-evaluates sides on later ticks.
             _motor->move(Direction::BACKWARD);    // one cell back per tick
             _state = RvcState::AVOIDING_OBSTACLE; // re-evaluate sides after backing up
             return;
@@ -83,5 +86,6 @@ void RvcController::onFrontObstacleDetected() {
         return;
     }
     _motor->move(Direction::STOP);
+    // [변경] Interrupt stops immediately; later ticks perform left/right evaluation.
     _state = RvcState::AVOIDING_OBSTACLE;
 }

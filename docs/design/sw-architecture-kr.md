@@ -1,22 +1,24 @@
 # SW Architecture Document
 
-## Design Change Trace - 2026-05-29
+## Design Change Trace - 2026-06-01
 
 ### [추가]
-- FrontSensor 기반 Right Scan 결정을 추가한다.
-- tick 단위 ESCAPING 결정을 추가한다.
+- application state machine에 `CHECKING_RIGHT`를 추가한다.
+- simulator의 front interrupt를 edge-trigger 방식으로 처리한다.
 
 ### [삭제]
-- 활성 controller/build architecture에서 전용 `RightSensor`를 삭제한다.
+- 활성 `RightSensor` build 및 controller 의존성을 삭제한다.
+- `_escape_step` 기반 escape orchestration을 활성 architecture에서 삭제한다.
 
 ### [변경]
-- 전방 장애물 처리와 simulator 통합을 Right Scan 기준으로 변경한다.
+- 오른쪽 감지를 오른쪽 회전 후 `FrontSensor`를 읽는 multi-tick controller 흐름으로 변경한다.
+- 포위 상태 escape를 한 칸 후진 후 다시 side evaluation으로 돌아가는 방식으로 변경한다.
 
 ---
 
 ## 1. 개요
 
-RVC Control SW는 계층형 아키텍처를 따른다. 상위 계층은 하위 계층의 concrete 구현이 아니라 interface에 의존하며, domain logic은 hardware 세부사항과 분리된다.
+RVC Control SW는 계층형 architecture를 따른다. application logic은 concrete hardware class가 아니라 interface와 domain type에 의존한다.
 
 ---
 
@@ -48,43 +50,49 @@ HAL / Simulator / UI Layer
 
 ## 3. 핵심 의존성
 
-- `RvcController`는 sensor, motor, cleaner, navigation strategy를 constructor injection으로 받는다.
-- `RightSensor`는 active build target에서 제외되며 legacy file로만 남는다.
-- 오른쪽 감지는 `FrontSensor`를 이용한 Right Scan으로 수행한다.
-- simulator는 오른쪽 grid 상태를 Right Scan 시점의 front sensor reading으로 주입한다.
+- `RvcController`는 모든 의존성을 constructor injection으로 받는다.
+- `RightSensor.cpp`는 active CMake source list에서 제외한다.
+- 오른쪽은 오른쪽 회전 후 `CHECKING_RIGHT` 상태에서 `FrontSensor`로 확인한다.
+- simulator는 robot의 현재 heading 기준으로 front reading을 주입하므로, 오른쪽 회전 후 front sensor는 기존 오른쪽 방향을 의미한다.
 
 ---
 
 ## 4. 장애물 처리 흐름
 
 ```text
-Front obstacle interrupt
+Front obstacle rising edge
+  -> RvcController::onFrontObstacleDetected()
   -> STOP
-  -> read left sensor
-  -> RIGHT
-  -> read front sensor as Right Scan
-  -> LEFT
-  -> navigate(sensor data)
-  -> avoid or enter ESCAPING
+  -> state = AVOIDING_OBSTACLE
+
+Timer tick in AVOIDING_OBSTACLE
+  -> LeftSensor 확인
+  -> left open이면 LEFT
+  -> left blocked이면 RIGHT 후 state = CHECKING_RIGHT
+
+Timer tick in CHECKING_RIGHT
+  -> FrontSensor를 right-side probe로 읽음
+  -> open이면 CLEANING
+  -> blocked이면 LEFT 후 state = ESCAPING
+
+Timer tick in ESCAPING
+  -> BACKWARD
+  -> state = AVOIDING_OBSTACLE
 ```
 
 ---
 
-## 5. ESCAPING 흐름
+## 5. Simulator 통합
 
-ESCAPING은 atomic operation이 아니다. controller는 `_escape_step`을 사용해 진행 단계를 기억하고, `onTick()` 호출마다 하나의 motor command만 발행한다.
-
-```text
-step 0: BACKWARD
-step 1: LEFT
-step 2: FORWARD and return CLEANING
-```
+- front obstacle interrupt는 edge-trigger 방식이다. simulator는 front가 clear에서 blocked로 바뀔 때만 `onFrontObstacleDetected()`를 호출한다.
+- front가 계속 blocked인 동안에는 이후 동작을 `onTick()`으로 진행한다.
+- `applyPendingMotorCommands()`는 새로 발행된 명령만 순서대로 반영하며, 테스트는 한 tick에 한 칸 초과 이동하지 않음을 검증한다.
 
 ---
 
 ## 6. 빌드 구조
 
-- `rvc_core`는 main을 제외한 core translation unit을 포함한다.
-- `hal/RightSensor.cpp`는 active source list에서 제외한다.
-- MSVC 빌드에서는 한국어 trace comment를 안정적으로 처리하기 위해 `/utf-8` compile option을 사용한다.
-- `rvc_tests`는 Google Test 기반으로 domain, controller, simulator behavior를 검증한다.
+- `rvc_core`는 main을 제외한 production code를 포함한다.
+- `hal/RightSensor.cpp`는 repository에 inactive legacy code로 남지만 compile하지 않는다.
+- MSVC에서는 한국어 trace comment를 안정적으로 처리하기 위해 `/utf-8`을 사용한다.
+- `rvc_tests`는 domain, controller, simulator behavior를 검증한다.

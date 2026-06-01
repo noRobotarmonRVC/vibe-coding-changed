@@ -5,6 +5,7 @@ enum class RvcState : std::uint8_t {
     IDLE,
     CLEANING,
     AVOIDING_OBSTACLE,
+    // [추가] Explicit state for FrontSensor-based right-side probing.
     CHECKING_RIGHT,
     ESCAPING,
     INTENSIFYING

@@ -1,29 +1,27 @@
 # Design Model
 
-## Design Change Trace - 2026-05-29
+## Design Change Trace - 2026-06-01
 
 ### [추가]
-- Added Right Scan as the source of right-side obstacle information.
-- Added `_escape_step` to represent tick-by-tick ESCAPING progress.
+- Added `CHECKING_RIGHT` as the explicit state for FrontSensor-based right probing.
+- Added multi-tick obstacle handling where the interrupt only stops the robot and later ticks perform side checks, right probe, and escape.
 
 ### [삭제]
-- Removed dedicated RightSensor from the active `RvcController` dependency model.
+- Removed the active `RightSensor` dependency from `RvcController`.
+- Removed `SensorData::is_right_blocked`, `_escape_step`, and `continueEscaping()` from the active design.
 
 ### [변경]
-- Changed `SensorData::is_right_blocked` to mean Right Scan blocked.
-- Changed surrounded escape sequencing from one event to multiple ticks.
-
-The Design Model defines the software structure of the RVC Control SW — classes, interfaces, responsibilities, and key collaborations. All naming follows the project code conventions.
+- Changed Right Scan from a value stored in `SensorData` to an observable controller state flow.
+- Changed ESCAPING from a fixed `_escape_step` sequence to explicit state-machine re-evaluation after each backward move.
 
 ---
 
-## 1. Design Principles Applied
+## 1. Design Principles
 
-- **SRP**: Each class has one reason to change (sensor reading, navigation logic, actuator control, and orchestration are separated).
-- **OCP**: New sensor types and navigation strategies are added via new classes, not by modifying existing ones.
-- **LSP**: All `ISensor` implementations are interchangeable in `RvcController`.
-- **ISP**: `ISensor`, `IMotorController`, and `ICleanerController` are separate interfaces; no class is forced to implement unrelated methods.
-- **DIP**: `RvcController` depends on abstractions (`ISensor`, `IMotorController`, `INavigationStrategy`), not concrete implementations.
+- **SRP**: sensor reading, navigation decision, actuator command, and simulation responsibilities are separated.
+- **OCP**: navigation strategy can be replaced without changing controller clients.
+- **DIP**: `RvcController` depends on interfaces, not concrete HAL classes.
+- **Testability**: right probing and escape are observable through motor logs and simulator position changes.
 
 ---
 
@@ -35,10 +33,11 @@ enum class CleanPower { OFF, ON, POWER_UP };
 
 enum class RvcState {
     IDLE,
-    CLEANING,           // normal forward navigation
-    AVOIDING_OBSTACLE,  // front blocked, at least one side open
-    ESCAPING,           // surrounded (front + left + right scan blocked)
-    INTENSIFYING        // dust detected, power up active
+    CLEANING,
+    AVOIDING_OBSTACLE,
+    CHECKING_RIGHT,
+    ESCAPING,
+    INTENSIFYING
 };
 ```
 
@@ -46,226 +45,82 @@ enum class RvcState {
 
 ## 3. Interfaces
 
-### `ISensor`
-```
-ISensor
-─────────────────────────────
-+ detect() : bool   {pure virtual}
-```
-Implemented by: `FrontSensor`, `LeftSensor`, and `DustSensor`. Right-side obstacle checks reuse `FrontSensor` through a right-scan maneuver.
+| Interface | Responsibility |
+|---|---|
+| `ISensor` | Returns a boolean sensor reading through `detect()`. |
+| `IMotorController` | Executes movement commands through `move(Direction)`. |
+| `ICleanerController` | Controls cleaner power through `setPower(CleanPower)`. |
+| `INavigationStrategy` | Decides the next navigation signal from `SensorData`. |
 
-### `IMotorController`
-```
-IMotorController
-─────────────────────────────
-+ move(direction : Direction) : void   {pure virtual}
-```
-
-### `ICleanerController`
-```
-ICleanerController
-─────────────────────────────
-+ setPower(power : CleanPower) : void   {pure virtual}
-```
-
-### `INavigationStrategy`
-```
-INavigationStrategy
-─────────────────────────────
-+ navigate(data : SensorData) : Direction   {pure virtual}
-```
-Decouples navigation algorithm from control orchestration. Enables substitution of rule-based logic with an ML-based strategy without touching `RvcController`.
+`FrontSensor`, `LeftSensor`, and `DustSensor` are active sensor dependencies. The dedicated `RightSensor` is not active.
 
 ---
 
-## 4. Value Object
+## 4. SensorData
 
-### `SensorData`
-Aggregates all sensor readings for a single control cycle.
+`SensorData` contains only the sensor facts needed by `DefaultNavigationStrategy`.
 
+```cpp
+struct SensorData {
+    bool is_front_blocked = false;
+    bool is_left_blocked  = false;
+    bool has_dust         = false;
+};
 ```
-SensorData
-─────────────────────────────
-+ is_front_blocked : bool
-+ is_left_blocked  : bool
-+ is_right_blocked : bool  // result of right-side front-sensor scan
-+ has_dust         : bool
-```
+
+Right-side information is intentionally not stored in `SensorData`; it is discovered by entering `CHECKING_RIGHT` after the robot has rotated right.
 
 ---
 
-## 5. Classes
+## 5. RvcController Responsibilities
 
-### `FrontSensor : ISensor`
-```
-FrontSensor
-─────────────────────────────
-- _triggered : bool
-─────────────────────────────
-+ detect() : bool
-+ onInterrupt() : void    ← called by interrupt handler
-```
+`RvcController` orchestrates:
+- start/stop lifecycle
+- timer tick handling
+- front obstacle interrupt handling
+- `AVOIDING_OBSTACLE -> CHECKING_RIGHT -> ESCAPING` state progression
+- cleaner power-up duration
 
-### `LeftSensor : ISensor`, `DustSensor : ISensor`
-```
-[Sensor]
-─────────────────────────────
-- _state : bool
-─────────────────────────────
-+ detect() : bool
-```
+Active dependencies:
+- `_front_sensor`
+- `_left_sensor`
+- `_dust_sensor`
+- `_motor`
+- `_cleaner`
+- `_nav_strategy`
 
-### `DefaultNavigationStrategy : INavigationStrategy`
-Implements the rule-based navigation logic from the requirements.
+---
 
-```
-DefaultNavigationStrategy
-─────────────────────────────
-+ navigate(data : SensorData) : Direction
-```
+## 6. Right Scan Flow
 
-Rules encoded (priority order):
-1. Front + Left + Right Scan blocked → BACKWARD (caller transitions to ESCAPING, then advances one command per tick)
-2. Front blocked, side open → LEFT or RIGHT (turn to open side)
-3. No obstacles → FORWARD
+Right Scan is now explicit in the state machine.
 
-### `RvcController`
-The central orchestrator. Owns all component references and manages the RVC state machine.
+```text
+front obstacle interrupt
+  -> STOP
+  -> state = AVOIDING_OBSTACLE
 
-```
-RvcController
-─────────────────────────────────────────────────────
-- _front_sensor      : ISensor*
-- _left_sensor       : ISensor*
-- _dust_sensor       : ISensor*
-- _motor             : IMotorController*
-- _cleaner           : ICleanerController*
-- _nav_strategy      : INavigationStrategy*
-- _state             : RvcState
-- _intensify_ticks   : int       ← countdown for PowerUp duration
-- _escape_step       : int       ← tick-by-tick escape progress
-─────────────────────────────────────────────────────
-+ start() : void
-+ stop()  : void
-+ onTick() : void                ← called each Timer tick
-+ onFrontObstacleDetected() : void   ← called from interrupt
+next tick
+  -> read LeftSensor
+  -> if left is open: LEFT, then CLEANING
+  -> if left is blocked: RIGHT, then CHECKING_RIGHT
+
+next tick in CHECKING_RIGHT
+  -> FrontSensor now faces the old right side
+  -> if open: CLEANING, then next cleaning tick moves FORWARD
+  -> if blocked: LEFT to restore original heading, then ESCAPING
 ```
 
 ---
 
-## 6. Class Diagram (Overview)
+## 7. ESCAPING Flow
 
-```
-          ┌─────────────────────────────────────────────────┐
-          │                  RvcController                   │
-          │  - _state : RvcState                            │
-          └──┬────────┬────────┬────────┬────────┬─────────┘
-             │        │        │        │        │
-         ISensor  ISensor  ISensor  ISensor  IMotorController  ICleanerController  INavigationStrategy
-             │        │        │        │
-       FrontSensor  LeftSensor  DustSensor
+`ESCAPING` emits one backward command per tick, then returns to `AVOIDING_OBSTACLE` so the controller can re-evaluate the environment.
 
-    INavigationStrategy
-          │
-    DefaultNavigationStrategy
+```text
+ESCAPING tick
+  -> BACKWARD
+  -> state = AVOIDING_OBSTACLE
 ```
 
----
-
-## 7. Sequence Diagrams
-
-### UC-02: Normal Navigation (no obstacle, no dust)
-
-```
-Timer          RvcController        ISensor(x3+dust)    IMotorController   ICleanerController
-  │                  │                    │                    │                   │
-  │──onTick()───────>│                    │                    │                   │
-  │                  │──detect()─────────>│ (left)             │                   │
-  │                  │<──false────────────│                    │                   │
-  │                  │──detect()─────────>│ (right)            │                   │
-  │                  │<──false────────────│                    │                   │
-  │                  │──detect()─────────>│ (dust)             │                   │
-  │                  │<──false────────────│                    │                   │
-  │                  │                    │                    │                   │
-  │                  │──navigate(data)──> [DefaultNavigationStrategy]              │
-  │                  │<──FORWARD──────────│                    │                   │
-  │                  │                    │                    │                   │
-  │                  │────────────────────────move(FORWARD)───>│                   │
-  │                  │────────────────────────────────────────────setPower(ON)────>│
-```
-
----
-
-### UC-03: Avoid Front Obstacle
-
-```
-FrontSensor    RvcController        ISensor(L/R)        IMotorController   ICleanerController
-  │                  │                    │                    │                   │
-  │──onFrontObstacleDetected()──────────>│                    │                   │
-  │                  │────────────────────────move(STOP)──────>│                   │
-  │                  │──detect()─────────>│ (left)             │                   │
-  │                  │<──false────────────│                    │                   │
-  │                  │   [left is open → turn LEFT]            │                   │
-  │                  │────────────────────────move(LEFT)──────>│                   │
-  │                  │────────────────────────move(FORWARD)───>│                   │
-  │                  │   [state = CLEANING]                    │                   │
-```
-
----
-
-### UC-04: Escape Surrounded State
-
-```
-FrontSensor    RvcController        ISensor(L/R)        IMotorController
-  │                  │                    │                    │
-  │──onFrontObstacleDetected()──────────>│                    │
-  │                  │──detect()─────────>│ (left) → true      │
-  │                  │──detect()─────────>│ (right) → true     │
-  │                  │   [state = ESCAPING]                    │
-  │                  │────────────────────────move(BACKWARD)──>│
-  │                  │   [select turn direction]               │
-  │                  │────────────────────────move(LEFT/RIGHT)>│
-  │                  │────────────────────────move(FORWARD)───>│
-  │                  │   [state = CLEANING]                    │
-```
-
----
-
-### UC-05: Intensify Cleaning
-
-```
-Timer          RvcController        DustSensor          ICleanerController
-  │                  │                    │                    │
-  │──onTick()───────>│──detect()─────────>│                    │
-  │                  │<──true─────────────│                    │
-  │                  │   [state = INTENSIFYING]                │
-  │                  │────────────────────────setPower(POWER_UP)>│
-  │                  │   [_intensify_ticks = INTENSIFY_DURATION]│
-  │                  │                    │                    │
-  │   ... ticks pass ...                  │                    │
-  │                  │   [_intensify_ticks reaches 0]          │
-  │                  │────────────────────────setPower(ON)─────>│
-  │                  │   [state = CLEANING]                    │
-```
-
----
-
-## 8. State Machine: RvcController
-
-```
-         start()
-  [IDLE] ──────────────────────────────────────────> [CLEANING]
-                                                         │   ▲
-                      onFrontObstacleDetected()           │   │ turn + forward
-            ┌─────── (side open) ──────────────────> [AVOIDING_OBSTACLE]
-            │                                             │
-            │        onFrontObstacleDetected()            │
-            └─────── (all blocked) ───────────────> [ESCAPING]
-                                                         │   ▲
-                                                         └───┘ backward + turn + forward
-            
-  [CLEANING] ──── dust detected ──────────────────> [INTENSIFYING]
-  [INTENSIFYING] ─ timer expires ─────────────────> [CLEANING]
-
-  Any state ──── stop() ──────────────────────────> [IDLE]
-```
+This allows dead-end cases to back up over multiple ticks without moving more than one cell per tick.

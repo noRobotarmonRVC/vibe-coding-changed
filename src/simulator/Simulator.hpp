@@ -56,6 +56,7 @@ private:
     Position _pos;
     Heading  _heading;
     size_t   _motor_log_applied = 0;
+    // [추가] Tracks front obstacle rising edge for interrupt semantics.
     bool     _prev_front_blocked = false;
     std::set<std::pair<int,int>> _obstacles;
     std::set<std::pair<int,int>> _dust_cells;

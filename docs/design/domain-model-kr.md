@@ -61,4 +61,4 @@ Left Sensor = blocked
 Right Scan = blocked
 ```
 
-이 상태에서는 한 이벤트 안에서 모든 탈출 동작을 끝내지 않고, tick마다 하나씩 `BACKWARD`, `LEFT`, `FORWARD` 명령을 실행한다.
+이 상태에서는 한 이벤트 안에서 모든 탈출 동작을 끝내지 않는다. `ESCAPING` tick은 `BACKWARD` 한 번만 실행하고, 이후 `AVOIDING_OBSTACLE`로 돌아가 좌측 확인과 오른쪽 probe를 다시 수행한다.

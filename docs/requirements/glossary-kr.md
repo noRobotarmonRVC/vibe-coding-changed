@@ -9,7 +9,7 @@
 - 활성 용어에서 전용 `Right Sensor`를 삭제한다.
 
 ### [변경]
-- `is_right_blocked`의 의미를 Right Sensor 감지값이 아니라 Right Scan 결과로 변경한다.
+- 오른쪽 장애물 판단을 `SensorData` 필드가 아니라 `CHECKING_RIGHT` 상태의 Front Sensor probe로 변경한다.
 
 ---
 
@@ -25,5 +25,5 @@
 | Dust Sensor | 바닥 먼지 상태를 감지하는 센서이다. |
 | Tick | timer가 주기적으로 발생시키는 제어 단위이다. |
 | ESCAPING | 전방, 왼쪽, 오른쪽이 모두 막힌 상태에서 탈출하는 controller 상태이다. |
-| Tick-based Escape | `BACKWARD`, `LEFT`, `FORWARD`를 서로 다른 tick에 나누어 실행하는 탈출 방식이다. |
-| `is_right_blocked` | Right Scan 결과가 blocked인지 나타내는 `SensorData` 필드이다. |
+| Tick-based Escape | 포위 상태에서 tick마다 하나의 이동 명령만 실행하는 탈출 방식이다. 현재 구현은 `BACKWARD` 후 다시 주변을 평가한다. |
+| CHECKING_RIGHT | 오른쪽으로 회전한 뒤 Front Sensor로 기존 오른쪽 방향을 확인하는 controller 상태이다. |

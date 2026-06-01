@@ -19,6 +19,7 @@ void Simulator::stop() {
 }
 
 void Simulator::tick() {
+    // [삭제] No right sensor injection; heading-aware front readings drive right probing.
     // Auto-inject left sensor from the grid (right sensor no longer exists)
     _left.inject(isBlocked(adjacentCell(_pos, turnLeft(_heading))));
 
@@ -38,6 +39,7 @@ void Simulator::tick() {
 
     // Front obstacle is an interrupt: fire only on the rising edge (clear ->
     // blocked). Multi-tick avoidance/escape then advances via onTick().
+    // [추가] Edge-triggering prevents repeated STOP while the robot remains blocked.
     if (front_blocked && !_prev_front_blocked) {
         _controller.onFrontObstacleDetected();
     } else {

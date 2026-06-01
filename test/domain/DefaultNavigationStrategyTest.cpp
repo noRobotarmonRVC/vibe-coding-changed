@@ -6,6 +6,8 @@ protected:
     DefaultNavigationStrategy strategy;
 };
 
+// [삭제] Strategy no longer consumes a right-side SensorData field.
+
 TEST_F(DefaultNavigationStrategyTest, ForwardWhenAllClear) {
     SensorData data;
     EXPECT_EQ(strategy.navigate(data), Direction::FORWARD);
