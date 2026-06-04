@@ -164,3 +164,36 @@ TEST_F(RvcControllerTest, IntensifyingInterruptedByFrontObstacle) {
     controller.onTick();                   // AVOIDING -> left open -> turn left
     EXPECT_EQ(motor.last(), Direction::LEFT);
 }
+
+// ── [추가] interrupt 수용 정책 (리팩터 계약 / F-10) ──────────────────────────
+// interrupt는 정상 주행(CLEANING/INTENSIFYING) 중에만 수용된다(true). 회피 시퀀스
+// 중에는 무시되어 false를 반환하며, 이로써 Right Scan용 우회전이 만든 거짓
+// interrupt가 CHECKING_RIGHT 평가를 가로채 후진 연쇄를 끊는 일을 막는다.
+
+TEST_F(RvcControllerTest, FrontInterruptAcceptedWhileCruising) {
+    controller.start();                                  // CLEANING
+    EXPECT_TRUE(controller.onFrontObstacleDetected());   // accepted
+    EXPECT_EQ(motor.last(), Direction::STOP);            // stops immediately
+}
+
+TEST_F(RvcControllerTest, FrontInterruptIgnoredDuringAvoidance) {
+    controller.start();
+    ASSERT_TRUE(controller.onFrontObstacleDetected());   // CLEANING -> AVOIDING
+    const auto cmds_before = motor.log.size();
+
+    EXPECT_FALSE(controller.onFrontObstacleDetected());  // ignored during avoidance
+    EXPECT_EQ(motor.log.size(), cmds_before);            // no extra motor command issued
+}
+
+TEST_F(RvcControllerTest, FrontInterruptIgnoredWhileEscaping) {
+    controller.start();
+    left.state = true;
+    controller.onFrontObstacleDetected();  // STOP, AVOIDING
+    controller.onTick();                   // RIGHT (probe), CHECKING_RIGHT
+    front.state = true;                    // right also blocked -> surrounded
+    controller.onTick();                   // LEFT (face back), ESCAPING
+    const auto cmds_before = motor.log.size();
+
+    EXPECT_FALSE(controller.onFrontObstacleDetected());  // ignored while escaping
+    EXPECT_EQ(motor.log.size(), cmds_before);
+}

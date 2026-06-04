@@ -94,4 +94,5 @@ Not applicable. The RVC Control SW has no direct user interface; user interactio
 | TEST-01 | `RvcControllerTest` must observe, tick by tick, the `RIGHT` right scan, front detect, `LEFT` heading restore, and `BACKWARD` progression. |
 | TEST-02 | `SimulatorTest` must verify that during ESCAPING the position changes by at most one cell per tick. |
 | TEST-03 | `SimulatorTest` must verify, with map-based regression tests, that the RVC escapes a dead-end corridor when an exit exists (see failure F-10). The suite must include `EscapesDeadEndCorridorThroughLeftGap`, `EscapesDeadEndCorridorThroughRightGap`, `BacksUpFullCorridorThenEscapes`, and `AvoidanceInterruptDoesNotBreakBackupChain`, confirming that a false front interrupt during avoidance does not sever the multi-tick backward chain. [추가] |
-| TEST-04 | Existing start, stop, dust, and normal tick behaviors must remain intact. |
+| TEST-04 | `RvcControllerTest` must verify the interrupt-acceptance policy at the unit level: `onFrontObstacleDetected()` returns `true` and stops while cruising (`CLEANING`/`INTENSIFYING`), and returns `false` (ignored, no motor command) during the avoidance sequence (`AVOIDING_OBSTACLE`/`CHECKING_RIGHT`/`ESCAPING`). See failure F-10. [추가] |
+| TEST-05 | Existing start, stop, dust, and normal tick behaviors must remain intact. |

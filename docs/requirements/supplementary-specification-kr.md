@@ -53,4 +53,5 @@
 - `RvcControllerTest`는 Right Scan 시 `RIGHT`, front detect, `LEFT` 복구, `BACKWARD` 진행이 tick별로 관찰되는지 검증해야 한다.
 - `SimulatorTest`는 ESCAPING 중 tick마다 한 칸 이하로만 위치가 변하는지 검증해야 한다.
 - `SimulatorTest`는 출구가 있는 막다른 통로에서 RVC가 탈출하는지 맵 기반 회귀 테스트로 검증해야 한다(failure F-10 참조). 구체적으로 `EscapesDeadEndCorridorThroughLeftGap`, `EscapesDeadEndCorridorThroughRightGap`, `BacksUpFullCorridorThenEscapes`, `AvoidanceInterruptDoesNotBreakBackupChain` 네 가지를 포함하며, 회피 중 거짓 front interrupt가 multi-tick 후진 연쇄를 끊지 않음을 확인한다. [추가]
+- `RvcControllerTest`는 interrupt 수용 정책을 단위 수준에서 검증해야 한다 — 정상 주행(`CLEANING`/`INTENSIFYING`) 중에는 `onFrontObstacleDetected()`가 `true`를 반환하며 정지하고, 회피 시퀀스(`AVOIDING_OBSTACLE`/`CHECKING_RIGHT`/`ESCAPING`) 중에는 `false`(무시, 모터 명령 없음)를 반환한다(failure F-10 참조). [추가]
 - 기존 start, stop, dust, normal tick 동작은 유지되어야 한다.
