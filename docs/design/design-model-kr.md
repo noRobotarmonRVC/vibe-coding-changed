@@ -5,6 +5,9 @@
 ### [변경]
 - `RvcController::onFrontObstacleDetected()`가 `bool`을 반환하며 interrupt 수용 정책을 소유하도록 변경한다. 정상 주행(`CLEANING` / `INTENSIFYING`) 중이면 motor를 STOP하고 `AVOIDING_OBSTACLE`로 전이한 뒤 `true`를 반환하고, 회피 시퀀스(`AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING`) 중이면 아무것도 하지 않고 `false`를 반환한다. simulator는 반환이 `false`면 `onTick()`으로 폴백하므로 Right Scan을 위한 우회전이 만드는 거짓 interrupt가 `CHECKING_RIGHT` 평가를 가로채지 못한다. controller가 정책을 소유하므로 `state()` getter는 추가하지 않는다(AD-05 / F-02 준수). (F-10 참조)
 
+### [추가]
+- mermaid State diagram 추가
+
 ---
 
 ## Design Change Trace - 2026-06-01
@@ -128,3 +131,24 @@ ESCAPING tick
 ```
 
 이 구조는 dead-end 상황에서 여러 tick에 걸쳐 후진할 수 있게 하며, 한 tick에 한 칸 이하 이동을 보장한다.
+
+---
+
+## 상태 머신 다이어그램
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> CLEANING : start()
+    CLEANING --> INTENSIFYING : dust detected
+    INTENSIFYING --> CLEANING : duration elapsed
+    CLEANING --> AVOIDING_OBSTACLE : front interrupt (accepted while cruising)
+    AVOIDING_OBSTACLE --> CLEANING : left open
+    AVOIDING_OBSTACLE --> CHECKING_RIGHT : left blocked, rotate right
+    CHECKING_RIGHT --> CLEANING : right open
+    CHECKING_RIGHT --> ESCAPING : right blocked, face back
+    ESCAPING --> AVOIDING_OBSTACLE : back up one cell
+    CLEANING --> IDLE : stop()
+```
+
+회피 시퀀스(`AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING`) 중에는 front interrupt가 무시된다(`onFrontObstacleDetected()`가 false 반환) — Right Scan용 회전이 만든 거짓 interrupt를 차단한다. (F-10 참조)

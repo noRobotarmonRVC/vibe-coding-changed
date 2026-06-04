@@ -2,6 +2,9 @@
 
 ## SRS Change Trace - 2026-06-04
 
+### [추가]
+- mermaid 시퀀스 다이어그램 추가
+
 ### [변경]
 - `onFrontObstacleDetected()`를 controller 상태로 게이트한다. 정상 주행(`CLEANING`/`INTENSIFYING`) 중에만 동작하고 회피 시퀀스(`AVOIDING_OBSTACLE`, `CHECKING_RIGHT`, `ESCAPING`) 중에는 억제하여, right scan 회전이 거짓 interrupt로 `CHECKING_RIGHT`를 가로채지 못하도록 한다(failure F-10 참조).
 - simulator 계약을 보완한다. front obstacle interrupt는 clear→blocked edge에서, 그리고 controller가 정상 주행(`CLEANING`/`INTENSIFYING`) 중일 때만 발생한다(failure F-10 참조).
@@ -88,6 +91,31 @@ tick()
   -> BACKWARD
   -> AVOIDING_OBSTACLE
 ```
+
+---
+
+## 시스템 시퀀스 다이어그램
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Sim as Simulator (environment)
+    participant Ctrl as RvcController
+    User->>Ctrl: start()
+    loop every Timer Tick
+        Sim->>Sim: sample sensors (front / left / dust)
+        alt front rising edge
+            Sim->>Ctrl: onFrontObstacleDetected()
+            Ctrl-->>Sim: handled : bool
+        end
+        opt not handled
+            Sim->>Ctrl: onTick()
+        end
+    end
+    User->>Ctrl: stop()
+```
+
+front interrupt는 정상 주행 중에만 수용된다(`true`). 회피 시퀀스 중에는 `false`를 반환하므로, Simulator는 `onTick()`으로 폴백해 평가를 진행한다(failure F-10 참조).
 
 ---
 

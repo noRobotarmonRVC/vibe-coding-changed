@@ -2,6 +2,9 @@
 
 ## Design Change Trace - 2026-06-04
 
+### [추가]
+- mermaid 시퀀스 다이어그램 추가
+
 ### [변경]
 - The interrupt-acceptance policy now lives in the controller: `onFrontObstacleDetected()` returns `bool` and guards the transition itself — it accepts the interrupt (STOP, transition to `AVOIDING_OBSTACLE`, return `true`) only while in `CLEANING` / `INTENSIFYING`, and returns `false` during `AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING`. On a front rising edge the simulator calls `onFrontObstacleDetected()` and falls back to `onTick()` when it returns `false`, so the Right Scan right-turn cannot raise a false interrupt. No `state()` getter is added — the controller owns the policy (AD-05 / F-02 준수). (F-10 참조)
 
@@ -112,6 +115,34 @@ if (!handled) { _controller.onTick(); }
 ```
 - While front remains blocked, later behavior progresses through `onTick()`.
 - `applyPendingMotorCommands()` applies each newly emitted command in order, and tests verify no tick moves more than one cell.
+
+---
+
+## Sequence Diagram — Avoidance & Escape
+
+```mermaid
+sequenceDiagram
+    participant Sim as Simulator
+    participant Ctrl as RvcController
+    participant Motor
+    Sim->>Ctrl: onFrontObstacleDetected() [cruising]
+    Ctrl->>Motor: move(STOP)
+    Note over Ctrl: state = AVOIDING_OBSTACLE, return true
+    Sim->>Ctrl: onTick() [left blocked]
+    Ctrl->>Motor: move(RIGHT)
+    Note over Ctrl: state = CHECKING_RIGHT
+    Sim->>Ctrl: onTick() [probed right blocked]
+    Ctrl->>Motor: move(LEFT)
+    Note over Ctrl: state = ESCAPING
+    Sim->>Ctrl: onTick()
+    Ctrl->>Motor: move(BACKWARD)
+    Note over Ctrl: state = AVOIDING_OBSTACLE (re-evaluate)
+    Sim->>Ctrl: onFrontObstacleDetected() [avoidance]
+    Ctrl-->>Sim: false (ignored)
+    Sim->>Ctrl: onTick() [fallback]
+```
+
+During the avoidance sequence, the false interrupt raised by the Right Scan right-turn is ignored as `false` and handled by the `onTick()` fallback. This keeps the `CHECKING_RIGHT` evaluation from being hijacked and preserves the back-up chain (see failure F-10).
 
 ---
 

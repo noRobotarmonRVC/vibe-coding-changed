@@ -2,6 +2,9 @@
 
 ## SRS Change Trace - 2026-06-04
 
+### [추가]
+- mermaid 시퀀스 다이어그램 추가
+
 ### [변경]
 - Gated `onFrontObstacleDetected()` on controller state: it acts only while cruising (`CLEANING`/`INTENSIFYING`) and is suppressed during the avoidance sequence (`AVOIDING_OBSTACLE`, `CHECKING_RIGHT`, `ESCAPING`), so a right-scan rotation cannot raise a false interrupt that hijacks `CHECKING_RIGHT` (see failure F-10).
 - Refined the simulator contract: the front obstacle interrupt fires on a clear-to-blocked edge **and only while the controller is cruising (`CLEANING`/`INTENSIFYING`)** (see failure F-10).
@@ -88,6 +91,31 @@ tick()
   -> BACKWARD
   -> AVOIDING_OBSTACLE
 ```
+
+---
+
+## System Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Sim as Simulator (environment)
+    participant Ctrl as RvcController
+    User->>Ctrl: start()
+    loop every Timer Tick
+        Sim->>Sim: sample sensors (front / left / dust)
+        alt front rising edge
+            Sim->>Ctrl: onFrontObstacleDetected()
+            Ctrl-->>Sim: handled : bool
+        end
+        opt not handled
+            Sim->>Ctrl: onTick()
+        end
+    end
+    User->>Ctrl: stop()
+```
+
+The front interrupt is accepted (`true`) only while cruising. During the avoidance sequence it returns `false`, so the Simulator falls back to `onTick()` to advance evaluation (see failure F-10).
 
 ---
 
