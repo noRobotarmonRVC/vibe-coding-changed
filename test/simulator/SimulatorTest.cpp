@@ -145,3 +145,90 @@ TEST(SimulatorTest, BacksUpAlongOriginalHeadingAfterProbe) {
     EXPECT_LT(sim.pos().x, start.x);
     EXPECT_EQ(sim.pos().y, start.y);
 }
+
+// [추가] 막다른 통로 탈출 — 맵 기반 회귀 테스트.
+// front interrupt가 Right Scan(CHECKING_RIGHT)을 가로채면 후진 연쇄가 끊겨
+// 출구가 있어도 통로 안에서 진동했다. interrupt를 정상 주행 중에만 발화하도록
+// 고친 뒤, 아래 맵들에서 로봇이 실제로 통로를 빠져나가야 한다.
+
+// 통로 끝에서 좌측(들어온 길 옆)이 트인 경우: 후진해 통로를 되짚어
+// 나오다 좌측 출구로 빠진다.
+//   .. <      (로봇 (2,0), WEST)
+//   X X .      (2,1)만 열린 출구
+TEST(SimulatorTest, EscapesDeadEndCorridorThroughLeftGap) {
+    Simulator sim(3, 2, {2, 0}, Heading::WEST);
+    sim.placeObstacle(0, 1);
+    sim.placeObstacle(1, 1);
+    // (2,1) is the only gap
+    sim.start();
+
+    bool escaped = false;
+    for (int i = 0; i < 20; ++i) {
+        sim.tick();
+        if (sim.pos().y == 1) { escaped = true; break; }  // left the corridor row
+    }
+    EXPECT_TRUE(escaped);
+    EXPECT_EQ(sim.pos().x, 2);
+    EXPECT_EQ(sim.pos().y, 1);
+}
+
+// 통로 끝에서 우측이 트인(L자) 경우: 후진하다 우측 출구를 probe로 찾아 빠진다.
+//   X . . .
+//   . . . <   (로봇 (3,1), WEST)
+//   X X X X
+TEST(SimulatorTest, EscapesDeadEndCorridorThroughRightGap) {
+    Simulator sim(4, 3, {3, 1}, Heading::WEST);
+    sim.placeObstacle(0, 0);
+    sim.placeObstacle(0, 2); sim.placeObstacle(1, 2);
+    sim.placeObstacle(2, 2); sim.placeObstacle(3, 2);
+    sim.start();
+
+    bool escaped = false;
+    for (int i = 0; i < 20; ++i) {
+        sim.tick();
+        if (sim.pos().y == 0) { escaped = true; break; }  // climbed out to the top row
+    }
+    EXPECT_TRUE(escaped);
+}
+
+// 긴 통로: 왼쪽 끝까지 갔다가 통로 전체를 되짚어 후진한 뒤 맨 끝 출구로 탈출.
+//   . . . . <    (로봇 (4,0), WEST)
+//   X X X X .    (4,1)만 열린 출구
+TEST(SimulatorTest, BacksUpFullCorridorThenEscapes) {
+    Simulator sim(5, 2, {4, 0}, Heading::WEST);
+    for (int x = 0; x < 4; ++x) { sim.placeObstacle(x, 1); }  // (4,1) left open
+    sim.start();
+
+    bool escaped = false;
+    for (int i = 0; i < 30; ++i) {
+        sim.tick();
+        if (sim.pos().y == 1) { escaped = true; break; }
+    }
+    EXPECT_TRUE(escaped);
+
+    // 통로를 되짚어 나오는 동안 여러 칸을 연속 후진했어야 한다.
+    const auto& log = sim.motorLog();
+    EXPECT_GE(std::count(log.begin(), log.end(), Direction::BACKWARD), 3);
+}
+
+// 회귀: 회피 시퀀스 중 회전이 front interrupt를 발화시켜도 후진 연쇄가
+// 끊기지 않아야 한다. interrupt가 Right Scan을 가로채던 버그에서는 후진이
+// 한두 번 만에 끊겼다 — 통로를 따라 여러 칸 후진이 이어져야 한다.
+TEST(SimulatorTest, AvoidanceInterruptDoesNotBreakBackupChain) {
+    Simulator sim(5, 2, {4, 0}, Heading::WEST);
+    for (int x = 0; x < 5; ++x) { sim.placeObstacle(x, 1); }  // fully closed corridor
+    sim.start();
+
+    // 왼쪽 끝(x==0)에서 막힌 뒤 후진으로 오른쪽 끝(x==4)까지 되짚어 나왔는지 추적.
+    bool hit_left_end = false;
+    bool backed_to_right_end = false;
+    for (int i = 0; i < 30; ++i) {
+        sim.tick();
+        if (sim.pos().x == 0) { hit_left_end = true; }
+        if (hit_left_end && sim.pos().x == 4) { backed_to_right_end = true; }
+    }
+
+    EXPECT_TRUE(backed_to_right_end);  // 통로를 끝까지 되짚어 후진
+    const auto& log = sim.motorLog();
+    EXPECT_GE(std::count(log.begin(), log.end(), Direction::BACKWARD), 3);
+}

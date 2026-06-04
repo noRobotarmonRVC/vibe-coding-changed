@@ -40,7 +40,12 @@ void Simulator::tick() {
     // Front obstacle is an interrupt: fire only on the rising edge (clear ->
     // blocked). Multi-tick avoidance/escape then advances via onTick().
     // [추가] Edge-triggering prevents repeated STOP while the robot remains blocked.
-    if (front_blocked && !_prev_front_blocked) {
+    // [수정] Right Scan은 front_sensor를 회전해 재사용하므로, 회피 시퀀스 중
+    // 회전으로 생기는 rising edge가 interrupt를 발화하면 CHECKING_RIGHT 평가를
+    // 가로채 후진 연쇄를 끊는다. interrupt는 정상 주행(CLEANING/INTENSIFYING) 중에만 유효.
+    const bool cruising = _controller.state() == RvcState::CLEANING
+                       || _controller.state() == RvcState::INTENSIFYING;
+    if (front_blocked && !_prev_front_blocked && cruising) {
         _controller.onFrontObstacleDetected();
     } else {
         _controller.onTick();

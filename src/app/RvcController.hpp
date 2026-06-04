@@ -18,6 +18,8 @@ public:
     void stop();
     void onTick();
     void onFrontObstacleDetected();
+    // [추가] 회피 시퀀스 중 front interrupt 억제 판단을 위해 현재 상태를 노출한다.
+    [[nodiscard]] RvcState state() const { return _state; }
 
 private:
     ISensor*             _front_sensor;
