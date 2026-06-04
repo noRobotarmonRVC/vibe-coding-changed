@@ -1,5 +1,12 @@
 # SW Architecture Document
 
+## Design Change Trace - 2026-06-04
+
+### [변경]
+- The interrupt-acceptance policy now lives in the controller: `onFrontObstacleDetected()` returns `bool` and guards the transition itself — it accepts the interrupt (STOP, transition to `AVOIDING_OBSTACLE`, return `true`) only while in `CLEANING` / `INTENSIFYING`, and returns `false` during `AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING`. On a front rising edge the simulator calls `onFrontObstacleDetected()` and falls back to `onTick()` when it returns `false`, so the Right Scan right-turn cannot raise a false interrupt. No `state()` getter is added — the controller owns the policy (AD-05 / F-02 준수). (F-10 참조)
+
+---
+
 ## Design Change Trace - 2026-06-01
 
 ### [추가]
@@ -84,7 +91,25 @@ Timer tick in ESCAPING
 
 ## 5. Simulator Integration
 
-- Front obstacle interrupt is edge-triggered: the simulator calls `onFrontObstacleDetected()` only when front changes from clear to blocked.
+- Front obstacle interrupt is edge-triggered, and the acceptance policy is owned by the controller. On a rising edge the simulator calls `onFrontObstacleDetected()`, which returns `true` only while the controller is in `CLEANING` / `INTENSIFYING` and `false` during `AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING`. When the call returns `false` (not handled) the simulator falls back to `onTick()`. This prevents the right-turn performed for Right Scan during the avoidance sequence from producing a false interrupt that hijacks the right-side evaluation. The simulator does not read controller state — no `state()` getter exists (AD-05 / F-02 준수). (F-10 참조)
+
+```cpp
+// RvcController — owns the interrupt-acceptance policy
+bool RvcController::onFrontObstacleDetected() {
+    if (_state != RvcState::CLEANING && _state != RvcState::INTENSIFYING) {
+        return false;          // ignored during the avoidance sequence
+    }
+    _motor->move(Direction::STOP);
+    _state = RvcState::AVOIDING_OBSTACLE;
+    return true;
+}
+// Simulator::tick() — fall back to onTick() when not handled
+bool handled = false;
+if (front_blocked && !_prev_front_blocked) {
+    handled = _controller.onFrontObstacleDetected();
+}
+if (!handled) { _controller.onTick(); }
+```
 - While front remains blocked, later behavior progresses through `onTick()`.
 - `applyPendingMotorCommands()` applies each newly emitted command in order, and tests verify no tick moves more than one cell.
 

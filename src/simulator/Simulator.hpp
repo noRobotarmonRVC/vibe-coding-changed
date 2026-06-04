@@ -47,12 +47,10 @@ public:
 
 private:
     [[nodiscard]] bool     isBlocked(Position p)               const;
-    [[nodiscard]] bool     isOutOfBounds(Position p)            const;
     [[nodiscard]] static Position adjacentCell(Position p, Heading h);
     [[nodiscard]] static Heading  turnLeft(Heading h);
     [[nodiscard]] static Heading  turnRight(Heading h);
     void     applyPendingMotorCommands();
-    bool     steerAwayFromBoundary();
 
     int     _grid_width;
     int     _grid_height;

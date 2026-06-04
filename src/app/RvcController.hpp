@@ -17,7 +17,8 @@ public:
     void start();
     void stop();
     void onTick();
-    void onFrontObstacleDetected();
+    // [변경] Returns true when the front interrupt is accepted, false when ignored.
+    bool onFrontObstacleDetected();
 
 private:
     ISensor*             _front_sensor;

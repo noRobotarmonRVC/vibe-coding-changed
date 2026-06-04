@@ -1,5 +1,12 @@
 # Domain Model
 
+## Design Change Trace - 2026-06-04
+
+### [변경]
+- `RvcController::onFrontObstacleDetected()` returns `bool` and owns the interrupt-acceptance policy in the class structure: it accepts the interrupt only while cruising (`CLEANING` / `INTENSIFYING`) and returns `false` during the avoidance sequence, on which the Simulator falls back to `onTick()`. No `state(): RvcState` getter is added — the controller owns the policy (AD-05 / F-02 준수). (F-10 참조)
+
+---
+
 ## Design Change Trace - 2026-05-29
 
 ### [추가]
@@ -82,3 +89,4 @@ DustSensor ──────────────────┘
 - FrontSensor triggers asynchronously (interrupt); all other sensors are read synchronously per Tick.
 - An Obstacle on all three sides (Front + Left + Right) defines the **Surrounded State**, which requires backward movement before turning.
 - Dust detection during active cleaning raises CleaningCommand to PowerUp temporarily; it does not stop navigation.
+- The FrontSensor interrupt is only meaningful while the RVC is cruising. In the software model, `RvcController::onFrontObstacleDetected()` returns `bool` and owns this policy: it accepts the interrupt only while cruising and returns `false` during the avoidance sequence, on which the Simulator falls back to `onTick()`. Because the controller owns the policy, no `state(): RvcState` getter is exposed (so the right-turn used for RightScan does not register as a new front obstacle). (AD-05 / F-02 준수, F-10 참조)

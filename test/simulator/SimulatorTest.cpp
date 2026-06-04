@@ -111,18 +111,6 @@ TEST(SimulatorTest, RunningStateChangesOnlyByStartAndStop) {
     EXPECT_FALSE(sim.isRunning());
 }
 
-// [추가] Boundary steering keeps the demo from orbiting only the outer wall.
-TEST(SimulatorTest, BoundarySteeringMovesInwardAndReversesSweep) {
-    Simulator sim(5, 5, {0, 0}, Heading::WEST);
-    sim.start();
-
-    sim.tick();
-
-    EXPECT_EQ(sim.pos().x, 0);
-    EXPECT_EQ(sim.pos().y, 1);
-    EXPECT_EQ(sim.heading(), Heading::EAST);
-}
-
 // Edge-triggered interrupt: STOP is issued once even while the front stays blocked.
 TEST(SimulatorTest, FrontInterruptFiresOnceWhileStuck) {
     Simulator sim(20, 12, {5, 5}, Heading::EAST);
@@ -168,4 +156,92 @@ TEST(SimulatorTest, BacksUpAlongOriginalHeadingAfterProbe) {
     // reversed westward (opposite of original EAST heading)
     EXPECT_LT(sim.pos().x, start.x);
     EXPECT_EQ(sim.pos().y, start.y);
+}
+
+// [추가] Dead-end corridor regressions. False front interrupts raised during
+// Right Scan must not break the multi-tick backward escape chain.
+TEST(SimulatorTest, EscapesDeadEndCorridorThroughLeftGap) {
+    Simulator sim(3, 2, {2, 0}, Heading::WEST);
+    sim.placeObstacle(0, 1);
+    sim.placeObstacle(1, 1);
+    sim.start();
+
+    bool escaped = false;
+    for (int i = 0; i < 20; ++i) {
+        sim.tick();
+        if (sim.pos().y == 1) {
+            escaped = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(escaped);
+    EXPECT_EQ(sim.pos().x, 2);
+    EXPECT_EQ(sim.pos().y, 1);
+}
+
+TEST(SimulatorTest, EscapesDeadEndCorridorThroughRightGap) {
+    Simulator sim(4, 3, {3, 1}, Heading::WEST);
+    sim.placeObstacle(0, 0);
+    sim.placeObstacle(0, 2);
+    sim.placeObstacle(1, 2);
+    sim.placeObstacle(2, 2);
+    sim.placeObstacle(3, 2);
+    sim.start();
+
+    bool escaped = false;
+    for (int i = 0; i < 20; ++i) {
+        sim.tick();
+        if (sim.pos().y == 0) {
+            escaped = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(escaped);
+}
+
+TEST(SimulatorTest, BacksUpFullCorridorThenEscapes) {
+    Simulator sim(5, 2, {4, 0}, Heading::WEST);
+    for (int x = 0; x < 4; ++x) {
+        sim.placeObstacle(x, 1);
+    }
+    sim.start();
+
+    bool escaped = false;
+    for (int i = 0; i < 30; ++i) {
+        sim.tick();
+        if (sim.pos().y == 1) {
+            escaped = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(escaped);
+    const auto& log = sim.motorLog();
+    EXPECT_GE(std::count(log.begin(), log.end(), Direction::BACKWARD), 3);
+}
+
+TEST(SimulatorTest, AvoidanceInterruptDoesNotBreakBackupChain) {
+    Simulator sim(5, 2, {4, 0}, Heading::WEST);
+    for (int x = 0; x < 5; ++x) {
+        sim.placeObstacle(x, 1);
+    }
+    sim.start();
+
+    bool hit_left_end = false;
+    bool backed_to_right_end = false;
+    for (int i = 0; i < 30; ++i) {
+        sim.tick();
+        if (sim.pos().x == 0) {
+            hit_left_end = true;
+        }
+        if (hit_left_end && sim.pos().x == 4) {
+            backed_to_right_end = true;
+        }
+    }
+
+    EXPECT_TRUE(backed_to_right_end);
+    const auto& log = sim.motorLog();
+    EXPECT_GE(std::count(log.begin(), log.end(), Direction::BACKWARD), 3);
 }

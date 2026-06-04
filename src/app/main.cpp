@@ -17,7 +17,7 @@
 
 using namespace std::chrono_literals;
 
-// ── Terminal raw mode ─────────────────────────────────────────────────────────
+// Terminal raw mode
 
 #ifdef _WIN32
 static DWORD g_orig_console_mode = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
@@ -31,7 +31,6 @@ static void restoreTerminal() {
 #else
     tcsetattr(STDIN_FILENO, TCSANOW, &g_orig_termios);
 #endif
-    // Show cursor, move to safe position
     std::cout << "\033[?25h\033[999;1H\n" << std::flush;
 }
 
@@ -71,19 +70,18 @@ static bool readInputChar(char& c) {
 #endif
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
-// Rows used by the grid display: border*2 + grid_h + status line
 static int inputRow(int grid_h) { return grid_h + 4; }
 
 static void printHelp(int grid_h) {
     const int row = inputRow(grid_h) + 1;
-    std::cout << "\033[" << row << ";1H\033[J"   // clear from here down
+    std::cout << "\033[" << row << ";1H\033[J"
               << "=== RVC System Operations ===\n"
               << "  start          startCleaning()\n"
               << "  stop           stopCleaning()\n"
               << "  speed <ms>     set tick interval (default 300)\n"
-              << "  dust x y       placeDust(x, y) — shown as cyan *\n"
+              << "  dust x y       placeDust(x, y) - shown as cyan *\n"
               << "  obstacle x y   placeObstacle(x, y)\n"
               << "  help           show this menu\n"
               << "  quit           exit\n"
@@ -92,7 +90,7 @@ static void printHelp(int grid_h) {
 
 static void renderInputLine(int grid_h, const std::string& buf) {
     int row = inputRow(grid_h);
-    std::cout << "\033[" << row << ";1H\033[2K"  // clear line
+    std::cout << "\033[" << row << ";1H\033[2K"
               << "> " << buf << std::flush;
 }
 
@@ -127,7 +125,7 @@ static void processCommand(const std::string& line, Simulator& sim,
     }
 }
 
-// ── Main ─────────────────────────────────────────────────────────────────────
+// Main
 
 static void setupObstacles(Simulator& sim) {
     for (int x = 5; x <= 9;  ++x) { sim.placeObstacle(x, 2); }
@@ -152,9 +150,8 @@ int main() {
     int tick = 0;
 
     enableRawMode();
-    std::cout << "\033[2J\033[?25l";  // clear screen, hide cursor
+    std::cout << "\033[2J\033[?25l";
 
-    // Tick thread: render grid, then restore cursor to input line
     std::thread tick_thread([&]() {
         while (running) {
             std::this_thread::sleep_for(std::chrono::milliseconds(tick_ms.load()));
@@ -171,7 +168,6 @@ int main() {
         }
     });
 
-    // Initial render
     {
         std::lock_guard<std::mutex> lock(sim_mutex);
         std::cout << "\033[H";
@@ -195,11 +191,11 @@ int main() {
                 processCommand(buf, sim, tick_ms, grid_h, quit);
                 buf.clear();
             }
-        } else if (c == 127 || c == '\b') {  // backspace
+        } else if (c == 127 || c == '\b') {
             if (!buf.empty()) { buf.pop_back(); }
-        } else if (c == 3) {  // Ctrl+C
+        } else if (c == 3) {
             quit = true;
-        } else if (c >= 32 && c < 127) {  // printable
+        } else if (c >= 32 && c < 127) {
             buf += c;
         }
 

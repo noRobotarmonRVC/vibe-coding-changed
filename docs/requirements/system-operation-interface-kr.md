@@ -1,5 +1,12 @@
 # System Operation Interface
 
+## SRS Change Trace - 2026-06-04
+
+### [변경]
+- `onFrontObstacleDetected()`를 controller 상태로 게이트한다. 정상 주행(`CLEANING`/`INTENSIFYING`) 중에만 동작하고 회피 시퀀스(`AVOIDING_OBSTACLE`, `CHECKING_RIGHT`, `ESCAPING`) 중에는 억제하여, right scan 회전이 거짓 interrupt로 `CHECKING_RIGHT`를 가로채지 못하도록 한다(failure F-10 참조).
+- simulator 계약을 보완한다. front obstacle interrupt는 clear→blocked edge에서, 그리고 controller가 정상 주행(`CLEANING`/`INTENSIFYING`) 중일 때만 발생한다(failure F-10 참조).
+- simulator running-state guard를 유지한다. `start()` 전과 `stop()` 후 `tick()`은 상태를 바꾸지 않고, console tick counter도 실행 중에만 증가한다.
+
 ## SRS Change Trace - 2026-06-01
 
 ### [추가]
@@ -51,6 +58,7 @@ Front Sensor가 보내는 interrupt 기반 전방 장애물 알림이다.
 
 계약:
 - 시스템이 idle이면 아무 것도 하지 않는다.
+- [변경] 정상 주행(`CLEANING`/`INTENSIFYING`) 중에만 동작하고, 회피 시퀀스(`AVOIDING_OBSTACLE`, `CHECKING_RIGHT`, `ESCAPING`) 중에는 interrupt를 억제한다. 회피 중에는 Front Sensor가 right scan에 재사용되어 회전이 거짓 interrupt를 일으켜 `CHECKING_RIGHT`를 가로챌 수 있기 때문이다(failure F-10 참조). 억제될 때 side evaluation은 `tick()`으로 계속 진행한다.
 - 그 외 상태에서는 `STOP`을 발행한다.
 - 상태를 `AVOIDING_OBSTACLE`로 설정한다.
 - interrupt handler 안에서 Right Scan을 수행하지 않는다. 오른쪽 probe는 이후 `tick()` 호출로 진행한다.
@@ -86,6 +94,7 @@ tick()
 
 ## 4. Simulator 계약
 
-- simulator는 front가 clear에서 blocked로 바뀌는 edge에서만 front obstacle interrupt를 발생시킨다.
+- simulator는 front가 clear에서 blocked로 바뀌는 edge에서 `onFrontObstacleDetected()`를 호출한다. controller는 정상 주행(`CLEANING`/`INTENSIFYING`) 중에만 이를 수용하고, 회피 시퀀스 중에는 `false`를 반환하므로 simulator는 controller 상태를 읽지 않고 `tick()` 진행으로 폴백한다(failure F-10 참조). [변경]
 - front가 계속 blocked인 동안에는 controller가 `tick()`으로 상태를 진행한다.
 - 각 simulator tick은 새 motor command를 반영하며, 테스트는 실제 이동이 한 칸 이하인지 검증한다.
+- simulator가 running 상태가 아니면 `Simulator::tick()`은 무시된다. console tick counter도 `start()` 이후에만 증가한다. [추가]

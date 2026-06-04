@@ -29,15 +29,14 @@ void Simulator::tick() {
     }
 
     // [삭제] No right sensor injection; heading-aware front readings drive right probing.
-    // Auto-inject left sensor from the grid (right sensor no longer exists)
     _left.inject(isBlocked(adjacentCell(_pos, turnLeft(_heading))));
 
     // Front sensor is also polled: the controller reuses it to probe the right
-    // side (after rotating right) since there is no dedicated right sensor.
+    // side after rotating right because there is no dedicated right sensor.
     bool front_blocked = isBlocked(adjacentCell(_pos, _heading));
     _front.inject(front_blocked);
 
-    // Auto-inject dust sensor if robot is on a dust cell, then consume it
+    // Auto-inject dust sensor if robot is on a dust cell, then consume it.
     auto dust_key = std::make_pair(_pos.x, _pos.y);
     if (_dust_cells.count(dust_key) != 0U) {
         _dust.inject(true);
@@ -46,19 +45,14 @@ void Simulator::tick() {
         _dust.inject(false);
     }
 
-    // [추가] Console-demo boundary steering prevents endless outer-wall orbiting.
-    if (isOutOfBounds(adjacentCell(_pos, _heading)) && steerAwayFromBoundary()) {
-        _prev_front_blocked = false;
-        applyPendingMotorCommands();
-        return;
-    }
-
     // Front obstacle is an interrupt: fire only on the rising edge (clear ->
     // blocked). Multi-tick avoidance/escape then advances via onTick().
     // [추가] Edge-triggering prevents repeated STOP while the robot remains blocked.
+    bool handled = false;
     if (front_blocked && !_prev_front_blocked) {
-        _controller.onFrontObstacleDetected();
-    } else {
+        handled = _controller.onFrontObstacleDetected();
+    }
+    if (!handled) {
         _controller.onTick();
     }
     _prev_front_blocked = front_blocked;
@@ -66,7 +60,9 @@ void Simulator::tick() {
 }
 
 void Simulator::triggerFrontObstacle() {
-    _controller.onFrontObstacleDetected();
+    if (!_controller.onFrontObstacleDetected()) {
+        _controller.onTick();
+    }
     applyPendingMotorCommands();
 }
 
@@ -90,17 +86,13 @@ const std::set<std::pair<int,int>>& Simulator::dustCells() const { return _dust_
 const std::vector<Direction>&       Simulator::motorLog()   const { return _motor.log(); }
 const std::vector<CleanPower>&      Simulator::cleanerLog() const { return _cleaner.log(); }
 
-// ── private helpers ────────────────────────────────────────────────────────────
+// Private helpers
 
 bool Simulator::isBlocked(Position p) const {
-    if (isOutOfBounds(p)) {
+    if (p.x < 0 || p.x >= _grid_width || p.y < 0 || p.y >= _grid_height) {
         return true;
     }
     return _obstacles.count({p.x, p.y}) > 0;
-}
-
-bool Simulator::isOutOfBounds(Position p) const {
-    return p.x < 0 || p.x >= _grid_width || p.y < 0 || p.y >= _grid_height;
 }
 
 Position Simulator::adjacentCell(Position p, Heading h) {
@@ -143,7 +135,7 @@ void Simulator::applyPendingMotorCommands() {
                 break;
             }
             case Direction::BACKWARD: {
-                // opposite of current heading = two left-turns
+                // Opposite of current heading = two left turns.
                 Heading opp  = turnLeft(turnLeft(_heading));
                 Position next = adjacentCell(_pos, opp);
                 if (!isBlocked(next)) { _pos = next; }
@@ -160,36 +152,4 @@ void Simulator::applyPendingMotorCommands() {
         }
     }
     _motor_log_applied = log.size();
-}
-
-bool Simulator::steerAwayFromBoundary() {
-    // [추가] Treat the grid edge as a sweep-row transition, not a hardware sensor path.
-    struct BoundaryTurn {
-        Direction first_turn;
-        Heading side_heading;
-        Direction second_turn;
-    };
-
-    BoundaryTurn primary{Direction::RIGHT, turnRight(_heading), Direction::RIGHT};
-    BoundaryTurn alternate{Direction::LEFT, turnLeft(_heading), Direction::LEFT};
-
-    if (_heading == Heading::WEST || _heading == Heading::SOUTH) {
-        primary = {Direction::LEFT, turnLeft(_heading), Direction::LEFT};
-        alternate = {Direction::RIGHT, turnRight(_heading), Direction::RIGHT};
-    }
-
-    const BoundaryTurn choices[] = {primary, alternate};
-    for (const BoundaryTurn& choice : choices) {
-        const Position side_step = adjacentCell(_pos, choice.side_heading);
-        if (!isBlocked(side_step)) {
-            _motor.move(choice.first_turn);
-            _motor.move(Direction::FORWARD);
-            _motor.move(choice.second_turn);
-            return true;
-        }
-    }
-
-    _motor.move(Direction::LEFT);
-    _motor.move(Direction::LEFT);
-    return true;
 }

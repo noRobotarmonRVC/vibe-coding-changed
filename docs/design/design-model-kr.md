@@ -1,5 +1,12 @@
 # Design Model
 
+## Design Change Trace - 2026-06-04
+
+### [변경]
+- `RvcController::onFrontObstacleDetected()`가 `bool`을 반환하며 interrupt 수용 정책을 소유하도록 변경한다. 정상 주행(`CLEANING` / `INTENSIFYING`) 중이면 motor를 STOP하고 `AVOIDING_OBSTACLE`로 전이한 뒤 `true`를 반환하고, 회피 시퀀스(`AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING`) 중이면 아무것도 하지 않고 `false`를 반환한다. simulator는 반환이 `false`면 `onTick()`으로 폴백하므로 Right Scan을 위한 우회전이 만드는 거짓 interrupt가 `CHECKING_RIGHT` 평가를 가로채지 못한다. controller가 정책을 소유하므로 `state()` getter는 추가하지 않는다(AD-05 / F-02 준수). (F-10 참조)
+
+---
+
 ## Design Change Trace - 2026-06-01
 
 ### [추가]
@@ -82,14 +89,18 @@ struct SensorData {
 - `AVOIDING_OBSTACLE -> CHECKING_RIGHT -> ESCAPING` 상태 진행
 - cleaner power-up duration 관리
 
+`onFrontObstacleDetected()`는 `bool`을 반환하며 interrupt 수용 정책을 소유한다. 정상 주행(`CLEANING` / `INTENSIFYING`) 중일 때만 interrupt를 수용하고(STOP, `AVOIDING_OBSTACLE`로 전이, `true` 반환), 회피 시퀀스 중에는 `false`를 반환한다. simulator는 controller 상태를 직접 판단하지 않고, 반환이 `false`면 `onTick()`으로 폴백할 뿐이다. controller가 정책을 소유하므로 `state()` getter는 노출하지 않는다(AD-05 / F-02 준수). (F-10 참조)
+
 ---
 
 ## 6. Right Scan 흐름
 
 Right Scan은 상태머신 안에서 명시적으로 진행된다.
 
+front obstacle interrupt는 controller가 정상 주행(`CLEANING` / `INTENSIFYING`)일 때만 수용된다. `onFrontObstacleDetected()`가 회피 시퀀스 중에는 `false`를 반환하기 때문이다. 회피 시퀀스 중에는 Right Scan을 위한 우회전으로 새 정면이 벽이 되어 rising edge가 생기더라도 이를 interrupt로 보지 않고, simulator가 `onTick()`으로 폴백하여 `CHECKING_RIGHT`에서 평가한다. (F-10 참조)
+
 ```text
-front obstacle interrupt
+front obstacle interrupt   (CLEANING / INTENSIFYING 일 때만)
   -> STOP
   -> state = AVOIDING_OBSTACLE
 

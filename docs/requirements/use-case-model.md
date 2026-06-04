@@ -1,5 +1,11 @@
 # Use-Case Model
 
+## SRS Change Trace - 2026-06-04
+
+### [변경]
+- Clarified that the Front Sensor interrupt (UC-03 entry) fires only while cruising (`CLEANING`/`INTENSIFYING`) and is suppressed during the avoidance sequence (`AVOIDING_OBSTACLE`, `CHECKING_RIGHT`, `ESCAPING`), so a rotation for the right scan cannot raise a false interrupt and hijack the `CHECKING_RIGHT` evaluation (see failure F-10).
+- Clarified UC-04 entry so that the surrounded-state evaluation proceeds via `tick()` and is not pre-empted by a false front interrupt during avoidance (see failure F-10).
+
 ## SRS Change Trace - 2026-05-29
 
 ### [추가]
@@ -109,7 +115,7 @@ graph LR
 
 | Condition | Extension |
 |---|---|
-| Front Sensor fires interrupt (obstacle ahead) | → UC-03: Avoid Front Obstacle |
+| Front Sensor fires interrupt (obstacle ahead) — only while cruising (`CLEANING`/`INTENSIFYING`); suppressed during avoidance (F-10) | → UC-03: Avoid Front Obstacle |
 | Front Sensor = True AND Left Sensor = True AND Right Scan = blocked | → UC-04: Escape Surrounded State |
 | Dust Sensor = True | → UC-05: Intensify Cleaning |
 
@@ -123,12 +129,12 @@ graph LR
 | **Name** | Avoid Front Obstacle |
 | **Primary Actor** | Front Sensor |
 | **Brief Description** | When a front obstacle is detected, the RVC stops immediately. Later ticks evaluate the left side and, if needed, probe the right side by rotating and reading the Front Sensor. |
-| **Preconditions** | Cleaning session is active. Front Sensor fires True. |
+| **Preconditions** | Cleaning session is active and cruising (`CLEANING`/`INTENSIFYING`). Front Sensor fires True. The interrupt is suppressed once avoidance handling has begun (F-10). |
 | **Postconditions** | RVC is moving forward on a new heading, cleaner remains On. |
 
 **Main Success Scenario:**
 
-1. Front Sensor triggers interrupt with True.
+1. Front Sensor triggers interrupt with True. [변경] The interrupt is only honored while cruising (`CLEANING`/`INTENSIFYING`); during the avoidance sequence (`AVOIDING_OBSTACLE`, `CHECKING_RIGHT`, `ESCAPING`) it is suppressed so the right scan rotation cannot raise a false interrupt (F-10).
 2. System commands Motor: Stop and enters `AVOIDING_OBSTACLE`.
 3. On a later Tick, system reads Left Sensor.
 4. If Left = False, system commands Motor: Left and returns to cleaning.
@@ -155,7 +161,7 @@ graph LR
 
 **Main Success Scenario:**
 
-1. System detects Front = True, Left = True, and Right Scan = blocked.
+1. System detects Front = True, Left = True, and Right Scan = blocked. [변경] This evaluation runs through `tick()` while in `CHECKING_RIGHT`; because the front interrupt is suppressed during avoidance, the rotation for the right scan does not raise a false interrupt that would pre-empt this transition (F-10).
 2. System restores the original heading with `LEFT` and enters `ESCAPING`.
 3. On the next Tick, system commands Motor: Backward.
 4. System returns to `AVOIDING_OBSTACLE` and re-evaluates side options on later ticks.

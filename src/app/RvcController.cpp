@@ -81,11 +81,15 @@ void RvcController::onTick() {
     }
 }
 
-void RvcController::onFrontObstacleDetected() {
-    if (_state == RvcState::IDLE) {
-        return;
+bool RvcController::onFrontObstacleDetected() {
+    // [변경] Accept front interrupts only while cruising. During avoidance,
+    // FrontSensor is reused for Right Scan, so a rotation can create a false
+    // rising edge that must be evaluated by onTick() instead.
+    if (_state != RvcState::CLEANING && _state != RvcState::INTENSIFYING) {
+        return false;
     }
     _motor->move(Direction::STOP);
     // [변경] Interrupt stops immediately; later ticks perform left/right evaluation.
     _state = RvcState::AVOIDING_OBSTACLE;
+    return true;
 }

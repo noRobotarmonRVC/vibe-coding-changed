@@ -91,7 +91,7 @@ TEST_F(RvcControllerTest, FrontObstacleOnlyStopsThenWaits) {
     controller.start();
     motor.log.clear();
 
-    controller.onFrontObstacleDetected();  // interrupt: STOP only, enter AVOIDING
+    EXPECT_TRUE(controller.onFrontObstacleDetected());  // interrupt: STOP only, enter AVOIDING
 
     ASSERT_EQ(motor.log.size(), 1U);
     EXPECT_EQ(motor.log[0], Direction::STOP);
@@ -145,7 +145,7 @@ TEST_F(RvcControllerTest, SurroundedProbesRightThenBacksUpOneCell) {
 }
 
 TEST_F(RvcControllerTest, FrontObstacleIgnoredWhenIdle) {
-    controller.onFrontObstacleDetected();
+    EXPECT_FALSE(controller.onFrontObstacleDetected());
     EXPECT_TRUE(motor.log.empty());
 }
 
@@ -163,4 +163,35 @@ TEST_F(RvcControllerTest, IntensifyingInterruptedByFrontObstacle) {
     left.state = false;
     controller.onTick();                   // AVOIDING -> left open -> turn left
     EXPECT_EQ(motor.last(), Direction::LEFT);
+}
+
+// [추가] Front interrupts are accepted only while cruising. During the avoidance
+// sequence, the front sensor is reused for Right Scan and false rising edges must
+// not reset the state machine.
+TEST_F(RvcControllerTest, FrontInterruptAcceptedWhileCruising) {
+    controller.start();
+    EXPECT_TRUE(controller.onFrontObstacleDetected());
+    EXPECT_EQ(motor.last(), Direction::STOP);
+}
+
+TEST_F(RvcControllerTest, FrontInterruptIgnoredDuringAvoidance) {
+    controller.start();
+    ASSERT_TRUE(controller.onFrontObstacleDetected());
+    const auto cmds_before = motor.log.size();
+
+    EXPECT_FALSE(controller.onFrontObstacleDetected());
+    EXPECT_EQ(motor.log.size(), cmds_before);
+}
+
+TEST_F(RvcControllerTest, FrontInterruptIgnoredWhileEscaping) {
+    controller.start();
+    left.state = true;
+    ASSERT_TRUE(controller.onFrontObstacleDetected());  // STOP, AVOIDING
+    controller.onTick();                               // RIGHT, CHECKING_RIGHT
+    front.state = true;
+    controller.onTick();                               // LEFT, ESCAPING
+    const auto cmds_before = motor.log.size();
+
+    EXPECT_FALSE(controller.onFrontObstacleDetected());
+    EXPECT_EQ(motor.log.size(), cmds_before);
 }

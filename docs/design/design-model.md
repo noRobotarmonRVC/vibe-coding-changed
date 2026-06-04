@@ -1,5 +1,12 @@
 # Design Model
 
+## Design Change Trace - 2026-06-04
+
+### [변경]
+- `RvcController::onFrontObstacleDetected()` now returns `bool` and owns the interrupt-acceptance policy. While cruising (`CLEANING` / `INTENSIFYING`) it stops the motor, transitions to `AVOIDING_OBSTACLE`, and returns `true`; during the avoidance sequence (`AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING`) it does nothing and returns `false`. The simulator falls back to `onTick()` when the call returns `false`, so the right-turn that performs Right Scan does not raise a false interrupt that would hijack `CHECKING_RIGHT`. No `state()` getter is added — the controller owns the policy (AD-05 / F-02 준수). (F-10 참조)
+
+---
+
 ## Design Change Trace - 2026-06-01
 
 ### [추가]
@@ -81,6 +88,8 @@ Right-side information is intentionally not stored in `SensorData`; it is discov
 - `AVOIDING_OBSTACLE -> CHECKING_RIGHT -> ESCAPING` state progression
 - cleaner power-up duration
 
+`onFrontObstacleDetected()` returns `bool` and owns the interrupt-acceptance policy: it accepts the interrupt (STOP, transition to `AVOIDING_OBSTACLE`, return `true`) only while cruising (`CLEANING` / `INTENSIFYING`), and returns `false` during the avoidance sequence. The simulator decides nothing about controller state; it simply falls back to `onTick()` when the return is `false`. No `state()` getter is exposed — the controller owns the policy (AD-05 / F-02 준수). (F-10 참조)
+
 Active dependencies:
 - `_front_sensor`
 - `_left_sensor`
@@ -95,8 +104,10 @@ Active dependencies:
 
 Right Scan is now explicit in the state machine.
 
+The front obstacle interrupt is accepted only while the controller is cruising (`CLEANING` / `INTENSIFYING`), because `onFrontObstacleDetected()` returns `false` during the avoidance sequence. During that sequence the right-turn that performs Right Scan can make a new wall appear in front, but that rising edge is **not** treated as an interrupt — the simulator falls back to `onTick()` and it is evaluated in `CHECKING_RIGHT`. (F-10 참조)
+
 ```text
-front obstacle interrupt
+front obstacle interrupt   (only while CLEANING / INTENSIFYING)
   -> STOP
   -> state = AVOIDING_OBSTACLE
 
