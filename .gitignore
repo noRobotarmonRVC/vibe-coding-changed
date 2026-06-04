@@ -30,3 +30,10 @@ Thumbs.db
 *.a
 *.so
 *.out
+
+# clang-tidy cache
+.cache/
+
+# local verification / visualization scratch
+rvc_viz
+viz.cpp

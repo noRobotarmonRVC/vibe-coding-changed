@@ -130,18 +130,23 @@ static void processCommand(const std::string& line, Simulator& sim,
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 static void setupObstacles(Simulator& sim) {
-    for (int x = 5; x <= 9;  ++x) { sim.placeObstacle(x, 2); }
-    for (int y = 3; y <= 4;  ++y) { sim.placeObstacle(9, y); }
-    for (int y = 7; y <= 8;  ++y) { sim.placeObstacle(9, y); }
-    for (int x = 5; x <= 14; ++x) { sim.placeObstacle(x, 8); }
-    for (int y = 3; y <= 7;  ++y) { sim.placeObstacle(16, y); }
+    // [데모] 막다른 통로(dead-end). 예전엔 여기서 무한루프에 빠졌다.
+    // 로봇은 (3,5)에서 WEST로 출발 → 왼쪽 끝(0,5)에서 막힘 → 좌·우 모두 막혀
+    // 포위 → 후진으로 통로를 되짚어 나와 → 오른쪽 끝 아래 (3,6) 출구로 탈출.
+    // 통로 위벽
+    for (int x = 0; x <= 3; ++x) { sim.placeObstacle(x, 4); }
+    // 통로 아래벽 — (3,6)만 출구로 열어 둠
+    sim.placeObstacle(0, 6);
+    sim.placeObstacle(1, 6);
+    sim.placeObstacle(2, 6);
+    // 왼쪽 끝(0,5)의 서쪽은 그리드 경계라 자동으로 막혀 있다.
 }
 
 int main() {
     const int grid_w = 22;
     const int grid_h = 12;
 
-    Simulator   sim(grid_w, grid_h, {1, 5}, Heading::EAST);
+    Simulator   sim(grid_w, grid_h, {3, 5}, Heading::WEST);
     GridDisplay display(grid_w, grid_h);
 
     setupObstacles(sim);
