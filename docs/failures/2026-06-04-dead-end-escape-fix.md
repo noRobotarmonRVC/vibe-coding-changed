@@ -38,22 +38,38 @@ ran normally. Tests happened to cover the case where the interrupt collision doe
 not occur, masking the bug for left-exit and no-exit corridors.
 
 ### Resolution
-Gate the interrupt on the controller state — it is only meaningful while cruising:
+Let the controller own the interrupt acceptance policy. `onFrontObstacleDetected()`
+returns a `bool`: while cruising (`CLEANING` / `INTENSIFYING`) it STOPs,
+transitions to `AVOIDING_OBSTACLE`, and returns `true`; during the avoidance
+sequence it does nothing and returns `false`. The Simulator falls back to
+`onTick()` only when the interrupt was not handled:
 
 ```cpp
-const bool cruising = _controller.state() == RvcState::CLEANING
-                   || _controller.state() == RvcState::INTENSIFYING;
-if (front_blocked && !_prev_front_blocked && cruising) {
-    _controller.onFrontObstacleDetected();
-} else {
-    _controller.onTick();
+// RvcController — owns the interrupt acceptance policy
+bool RvcController::onFrontObstacleDetected() {
+    if (_state != RvcState::CLEANING && _state != RvcState::INTENSIFYING) {
+        return false;          // ignore while in the avoidance sequence
+    }
+    _motor->move(Direction::STOP);
+    _state = RvcState::AVOIDING_OBSTACLE;
+    return true;
 }
+// Simulator::tick() — fall back to onTick when not handled
+bool handled = false;
+if (front_blocked && !_prev_front_blocked) {
+    handled = _controller.onFrontObstacleDetected();
+}
+if (!handled) { _controller.onTick(); }
 ```
 
-Rotations during `AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING` no longer
-raise a false interrupt; the right scan completes and the backward chain runs to
-the end of the corridor. Required exposing `RvcController::state()`.
-Captured in SRS as FUNC-01 (2026-06-04 change trace).
+Rotations during `AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING` now return
+`false`, so the rising edge is evaluated through the `onTick()` fallback; the
+right scan completes and the backward chain runs to the end of the corridor. No
+`state()` getter is exposed — the acceptance decision lives in the controller, so
+this stays compliant with **AD-05** / **F-02** (no `state()` getter on domain
+classes). An earlier attempt did re-add a `state()` getter so the Simulator could
+gate the call; that violated AD-05 and was corrected by moving the policy into the
+controller's `bool` return. Captured in SRS as FUNC-01 (2026-06-04 change trace).
 
 ### Verification
 - New map-based regression tests in `SimulatorTest`:

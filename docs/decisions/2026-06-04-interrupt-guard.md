@@ -1,8 +1,9 @@
 # Interrupt Guard — 2026-06-04
 
-Decision record for gating the front-obstacle interrupt on the controller state,
+Decision record for who owns the front-obstacle interrupt acceptance policy,
 the fix for failure **F-10** (dead-end escape never fires; the RVC oscillates
 between two cells). See `docs/failures/2026-06-04-dead-end-escape-fix.md`.
+Relates to **AD-05** / **F-02** (no `state()` getter on domain classes).
 
 ---
 
@@ -25,26 +26,38 @@ controller could not tell them apart.
 
 ## Decision
 
-Gate the front interrupt on the controller state. It is only meaningful while
-the RVC is cruising:
+Let the **controller own** the interrupt acceptance policy.
+`onFrontObstacleDetected()` returns a `bool`: while cruising (`CLEANING` /
+`INTENSIFYING`) it issues STOP, transitions to `AVOIDING_OBSTACLE`, and returns
+`true`; during the avoidance sequence it does nothing and returns `false`. The
+Simulator calls the method on the rising edge and falls back to `onTick()` only
+when it was not handled:
 
 ```cpp
-const bool cruising = _controller.state() == RvcState::CLEANING
-                   || _controller.state() == RvcState::INTENSIFYING;
-if (front_blocked && !_prev_front_blocked && cruising) {
-    _controller.onFrontObstacleDetected();
-} else {
-    _controller.onTick();
+// RvcController — owns the interrupt acceptance policy
+bool RvcController::onFrontObstacleDetected() {
+    if (_state != RvcState::CLEANING && _state != RvcState::INTENSIFYING) {
+        return false;          // ignore while in the avoidance sequence
+    }
+    _motor->move(Direction::STOP);
+    _state = RvcState::AVOIDING_OBSTACLE;
+    return true;
 }
+// Simulator::tick() — fall back to onTick when not handled
+bool handled = false;
+if (front_blocked && !_prev_front_blocked) {
+    handled = _controller.onFrontObstacleDetected();
+}
+if (!handled) { _controller.onTick(); }
 ```
 
 During the avoidance sequence (`AVOIDING_OBSTACLE` / `CHECKING_RIGHT` /
-`ESCAPING`) the interrupt is suppressed and the rising edge is evaluated through
-`onTick()` instead. This required exposing `RvcController::state()` so the
-Simulator can read the controller state.
+`ESCAPING`) the controller returns `false`, so the rising edge is evaluated
+through the `onTick()` fallback instead. No `state()` getter is added — the
+Simulator never reads the controller's internal state.
 
-- Code: `src/simulator/Simulator.cpp` (`tick()` cruising guard),
-  `src/app/RvcController.hpp` (`state()` getter — reflected in the class diagram).
+- Code: `src/simulator/Simulator.cpp` (`tick()` handled/fallback),
+  `src/app/RvcController.cpp` (`onFrontObstacleDetected()` returns `bool`).
 
 ## Alternatives Rejected (Out of Scope)
 
@@ -60,12 +73,25 @@ idles. Two ways to detect "no exit" were considered and rejected:
 The sealed-region case is therefore declared out of scope rather than masked with
 an arbitrary stop counter.
 
+## How We Got Here (AD-05 / F-02 Compliance)
+
+The first attempt at this fix put the guard in the Simulator: it read
+`_controller.state()`, called `onFrontObstacleDetected()` only when the state was
+`CLEANING` / `INTENSIFYING`, and otherwise fell back to `onTick()`. That required
+re-adding a `RvcController::state()` getter — which **violated AD-05** ("No
+state() Getter on Domain Classes", see `docs/failures/2026-05-17-failures-and-resolutions.md` F-02).
+On noticing the violation, we corrected it: the acceptance policy now lives inside
+the controller, expressed as the `bool` return of `onFrontObstacleDetected()`, and
+the `state()` getter was removed again. The result is AD-05 / F-02 compliant.
+
 ## Tradeoff
 
-The Simulator now depends on `RvcController::state()`, a small added coupling
-between the simulator and the controller surface. In exchange, the Front Sensor's
-two roles no longer collide, dead-end escape with an exit works, and "exit exists"
-is once again distinguishable from "no exit" in the state trace.
+The interrupt acceptance policy is now decided inside the controller, so the
+Simulator no longer depends on the controller's internal state — the coupling the
+first attempt introduced is gone, which is itself a win for AD-05. In exchange,
+the Front Sensor's two roles no longer collide, dead-end escape with an exit
+works, and "exit exists" is once again distinguishable from "no exit" in the
+state trace.
 
 ## Verification
 

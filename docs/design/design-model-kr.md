@@ -2,11 +2,8 @@
 
 ## Design Change Trace - 2026-06-04
 
-### [추가]
-- simulator가 front interrupt 게이트에 사용할 수 있도록 controller에 `RvcController::state() const` 조회 메서드를 추가한다. (F-10 참조)
-
 ### [변경]
-- front obstacle interrupt는 controller가 정상 주행(`CLEANING` / `INTENSIFYING`)일 때만 발화하고, 회피 시퀀스(`AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING`) 중에는 억제하도록 변경한다. 이로써 Right Scan을 위한 우회전이 만드는 거짓 interrupt가 `CHECKING_RIGHT` 평가를 가로채지 못한다. (F-10 참조)
+- `RvcController::onFrontObstacleDetected()`가 `bool`을 반환하며 interrupt 수용 정책을 소유하도록 변경한다. 정상 주행(`CLEANING` / `INTENSIFYING`) 중이면 motor를 STOP하고 `AVOIDING_OBSTACLE`로 전이한 뒤 `true`를 반환하고, 회피 시퀀스(`AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING`) 중이면 아무것도 하지 않고 `false`를 반환한다. simulator는 반환이 `false`면 `onTick()`으로 폴백하므로 Right Scan을 위한 우회전이 만드는 거짓 interrupt가 `CHECKING_RIGHT` 평가를 가로채지 못한다. controller가 정책을 소유하므로 `state()` getter는 추가하지 않는다(AD-05 / F-02 준수). (F-10 참조)
 
 ---
 
@@ -92,7 +89,7 @@ struct SensorData {
 - `AVOIDING_OBSTACLE -> CHECKING_RIGHT -> ESCAPING` 상태 진행
 - cleaner power-up duration 관리
 
-또한 현재 `RvcState`를 반환하는 `state() const`를 노출한다. simulator는 이 값을 읽어 front rising edge가 진짜 interrupt(정상 주행 중일 때만)인지, 회피 시퀀스의 일부인지 구분한다. (F-10 참조)
+`onFrontObstacleDetected()`는 `bool`을 반환하며 interrupt 수용 정책을 소유한다. 정상 주행(`CLEANING` / `INTENSIFYING`) 중일 때만 interrupt를 수용하고(STOP, `AVOIDING_OBSTACLE`로 전이, `true` 반환), 회피 시퀀스 중에는 `false`를 반환한다. simulator는 controller 상태를 직접 판단하지 않고, 반환이 `false`면 `onTick()`으로 폴백할 뿐이다. controller가 정책을 소유하므로 `state()` getter는 노출하지 않는다(AD-05 / F-02 준수). (F-10 참조)
 
 ---
 
@@ -100,7 +97,7 @@ struct SensorData {
 
 Right Scan은 상태머신 안에서 명시적으로 진행된다.
 
-front obstacle interrupt는 controller가 정상 주행(`CLEANING` / `INTENSIFYING`)일 때만 발화한다. 회피 시퀀스 중에는 Right Scan을 위한 우회전으로 새 정면이 벽이 되어 rising edge가 생기더라도 이를 interrupt로 보지 않고 `CHECKING_RIGHT`의 `onTick()`으로 평가한다. (F-10 참조)
+front obstacle interrupt는 controller가 정상 주행(`CLEANING` / `INTENSIFYING`)일 때만 수용된다. `onFrontObstacleDetected()`가 회피 시퀀스 중에는 `false`를 반환하기 때문이다. 회피 시퀀스 중에는 Right Scan을 위한 우회전으로 새 정면이 벽이 되어 rising edge가 생기더라도 이를 interrupt로 보지 않고, simulator가 `onTick()`으로 폴백하여 `CHECKING_RIGHT`에서 평가한다. (F-10 참조)
 
 ```text
 front obstacle interrupt   (CLEANING / INTENSIFYING 일 때만)

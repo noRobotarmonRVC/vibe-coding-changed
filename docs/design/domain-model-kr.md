@@ -2,8 +2,8 @@
 
 ## Design Change Trace - 2026-06-04
 
-### [추가]
-- 클래스 구조의 `RvcController`에 `state(): RvcState` 조회 메서드를 추가한다. Simulator가 이 값을 읽어 front interrupt를 게이트한다(정상 주행 중에만 발화, 회피 시퀀스 중에는 억제). (F-10 참조)
+### [변경]
+- 클래스 구조에서 `RvcController::onFrontObstacleDetected()`가 `bool`을 반환하며 interrupt 수용 정책을 소유한다. 정상 주행(`CLEANING` / `INTENSIFYING`) 중에만 interrupt를 수용하고 회피 시퀀스 중에는 `false`를 반환하며, 그때 Simulator는 `onTick()`으로 폴백한다. controller가 정책을 소유하므로 `state(): RvcState` getter는 추가하지 않는다(AD-05 / F-02 준수). (F-10 참조)
 
 ---
 
@@ -55,7 +55,7 @@
 - Control SW는 SensorData를 구성하고 Navigation Strategy에 전달한다.
 - Navigation Strategy는 SensorData를 바탕으로 Direction을 결정한다.
 - Motor와 Cleaner는 Control SW가 발행한 명령을 수행한다.
-- Front Sensor interrupt는 정상 주행 중에만 의미가 있다. 소프트웨어 모델에서 `RvcController`는 `state(): RvcState`를 노출하여 Simulator가 controller 상태를 읽고 회피 시퀀스 중에는 interrupt를 억제하도록 한다(Right Scan용 우회전이 새 전방 장애물로 잡히지 않게 한다). (F-10 참조)
+- Front Sensor interrupt는 정상 주행 중에만 의미가 있다. 소프트웨어 모델에서 `RvcController::onFrontObstacleDetected()`가 `bool`을 반환하며 이 정책을 소유한다. 정상 주행 중에만 interrupt를 수용하고 회피 시퀀스 중에는 `false`를 반환하며, 그때 Simulator는 `onTick()`으로 폴백한다. controller가 정책을 소유하므로 `state(): RvcState` getter는 노출하지 않는다(Right Scan용 우회전이 새 전방 장애물로 잡히지 않게 한다). (AD-05 / F-02 준수, F-10 참조)
 
 ---
 
