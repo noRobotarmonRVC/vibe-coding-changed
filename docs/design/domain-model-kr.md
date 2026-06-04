@@ -1,5 +1,15 @@
 # Domain Model
 
+## Design Change Trace - 2026-06-04
+
+### [변경]
+- 클래스 구조에서 `RvcController::onFrontObstacleDetected()`가 `bool`을 반환하며 interrupt 수용 정책을 소유한다. 정상 주행(`CLEANING` / `INTENSIFYING`) 중에만 interrupt를 수용하고 회피 시퀀스 중에는 `false`를 반환하며, 그때 Simulator는 `onTick()`으로 폴백한다. controller가 정책을 소유하므로 `state(): RvcState` getter는 추가하지 않는다(AD-05 / F-02 준수). (F-10 참조)
+
+### [추가]
+- mermaid Class diagram 추가
+
+---
+
 ## Design Change Trace - 2026-05-29
 
 ### [추가]
@@ -48,6 +58,54 @@
 - Control SW는 SensorData를 구성하고 Navigation Strategy에 전달한다.
 - Navigation Strategy는 SensorData를 바탕으로 Direction을 결정한다.
 - Motor와 Cleaner는 Control SW가 발행한 명령을 수행한다.
+- Front Sensor interrupt는 정상 주행 중에만 의미가 있다. 소프트웨어 모델에서 `RvcController::onFrontObstacleDetected()`가 `bool`을 반환하며 이 정책을 소유한다. 정상 주행 중에만 interrupt를 수용하고 회피 시퀀스 중에는 `false`를 반환하며, 그때 Simulator는 `onTick()`으로 폴백한다. controller가 정책을 소유하므로 `state(): RvcState` getter는 노출하지 않는다(Right Scan용 우회전이 새 전방 장애물로 잡히지 않게 한다). (AD-05 / F-02 준수, F-10 참조)
+
+---
+
+## 클래스 다이어그램
+
+```mermaid
+classDiagram
+    class RvcController {
+        +start()
+        +stop()
+        +onTick()
+        +onFrontObstacleDetected() bool
+        -state RvcState
+    }
+    class ISensor {
+        <<interface>>
+        +detect() bool
+    }
+    class IMotorController {
+        <<interface>>
+        +move(Direction)
+    }
+    class ICleanerController {
+        <<interface>>
+        +setPower(CleanPower)
+    }
+    class INavigationStrategy {
+        <<interface>>
+        +navigate(SensorData) Direction
+    }
+    class DefaultNavigationStrategy {
+        +navigate(SensorData) Direction
+    }
+    class SensorData {
+        +is_front_blocked bool
+        +is_left_blocked bool
+        +has_dust bool
+    }
+    RvcController --> ISensor : front / left / dust
+    RvcController --> IMotorController : motor
+    RvcController --> ICleanerController : cleaner
+    RvcController --> INavigationStrategy : nav
+    INavigationStrategy --> SensorData : reads
+    DefaultNavigationStrategy ..|> INavigationStrategy
+```
+
+`RvcController`는 인터페이스에만 의존하며(의존성 주입), 우측 전용 센서·`state()` getter는 없다(AD-05 / F-02 준수). interrupt 수용은 `onFrontObstacleDetected(): bool`이 담당한다.
 
 ---
 

@@ -1,5 +1,15 @@
 # SW Architecture Document
 
+## Design Change Trace - 2026-06-04
+
+### [추가]
+- mermaid 시퀀스 다이어그램 추가
+
+### [변경]
+- interrupt 수용 정책을 controller가 소유하도록 변경한다. `onFrontObstacleDetected()`가 `bool`을 반환하며 전이를 스스로 가드한다. `CLEANING` / `INTENSIFYING` 중에만 interrupt를 수용하고(STOP, `AVOIDING_OBSTACLE`로 전이, `true` 반환), `AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING` 중에는 `false`를 반환한다. simulator는 front rising edge에서 `onFrontObstacleDetected()`를 호출하고 반환이 `false`면 `onTick()`으로 폴백하므로 Right Scan의 우회전이 거짓 interrupt를 만들지 못한다. controller가 정책을 소유하므로 `state()` getter는 추가하지 않는다(AD-05 / F-02 준수). (F-10 참조)
+
+---
+
 ## Design Change Trace - 2026-06-01
 
 ### [추가]
@@ -84,9 +94,55 @@ Timer tick in ESCAPING
 
 ## 5. Simulator 통합
 
-- front obstacle interrupt는 edge-trigger 방식이다. simulator는 front가 clear에서 blocked로 바뀔 때만 `onFrontObstacleDetected()`를 호출한다.
+- front obstacle interrupt는 edge-trigger 방식이며, 수용 정책은 controller가 소유한다. simulator는 rising edge에서 `onFrontObstacleDetected()`를 호출하고, 이 함수는 controller가 `CLEANING` / `INTENSIFYING`일 때만 `true`를, `AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING` 중에는 `false`를 반환한다. 반환이 `false`(처리 안 됨)면 simulator는 `onTick()`으로 폴백한다. 이로써 회피 시퀀스 중 Right Scan을 위한 우회전이 만드는 거짓 interrupt가 오른쪽 평가를 가로채지 못한다. simulator는 controller 상태를 읽지 않으며 `state()` getter는 존재하지 않는다(AD-05 / F-02 준수). (F-10 참조)
+
+```cpp
+// RvcController — interrupt 수용 정책을 소유
+bool RvcController::onFrontObstacleDetected() {
+    if (_state != RvcState::CLEANING && _state != RvcState::INTENSIFYING) {
+        return false;          // 회피 시퀀스 중엔 무시
+    }
+    _motor->move(Direction::STOP);
+    _state = RvcState::AVOIDING_OBSTACLE;
+    return true;
+}
+// Simulator::tick() — 처리 안 되면 onTick으로 폴백
+bool handled = false;
+if (front_blocked && !_prev_front_blocked) {
+    handled = _controller.onFrontObstacleDetected();
+}
+if (!handled) { _controller.onTick(); }
+```
 - front가 계속 blocked인 동안에는 이후 동작을 `onTick()`으로 진행한다.
 - `applyPendingMotorCommands()`는 새로 발행된 명령만 순서대로 반영하며, 테스트는 한 tick에 한 칸 초과 이동하지 않음을 검증한다.
+
+---
+
+## 시퀀스 다이어그램 — 회피·탈출
+
+```mermaid
+sequenceDiagram
+    participant Sim as Simulator
+    participant Ctrl as RvcController
+    participant Motor
+    Sim->>Ctrl: onFrontObstacleDetected() [cruising]
+    Ctrl->>Motor: move(STOP)
+    Note over Ctrl: state = AVOIDING_OBSTACLE, return true
+    Sim->>Ctrl: onTick() [left blocked]
+    Ctrl->>Motor: move(RIGHT)
+    Note over Ctrl: state = CHECKING_RIGHT
+    Sim->>Ctrl: onTick() [probed right blocked]
+    Ctrl->>Motor: move(LEFT)
+    Note over Ctrl: state = ESCAPING
+    Sim->>Ctrl: onTick()
+    Ctrl->>Motor: move(BACKWARD)
+    Note over Ctrl: state = AVOIDING_OBSTACLE (re-evaluate)
+    Sim->>Ctrl: onFrontObstacleDetected() [avoidance]
+    Ctrl-->>Sim: false (ignored)
+    Sim->>Ctrl: onTick() [fallback]
+```
+
+회피 시퀀스 중 Right Scan용 우회전이 만든 거짓 interrupt는 `false`로 무시되고 `onTick()` 폴백으로 처리된다. 그래서 `CHECKING_RIGHT` 평가가 가로채이지 않고 후진 연쇄가 유지된다(failure F-10 참조).
 
 ---
 

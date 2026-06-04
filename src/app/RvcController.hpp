@@ -17,7 +17,9 @@ public:
     void start();
     void stop();
     void onTick();
-    void onFrontObstacleDetected();
+    // [수정] interrupt 수용 정책을 controller가 소유한다. 정상 주행 중이면 처리하고
+    // true, 회피 시퀀스 중이면 무시하고 false를 반환한다(F-10).
+    bool onFrontObstacleDetected();
 
 private:
     ISensor*             _front_sensor;
