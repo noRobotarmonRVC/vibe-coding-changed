@@ -81,11 +81,16 @@ void RvcController::onTick() {
     }
 }
 
-void RvcController::onFrontObstacleDetected() {
-    if (_state == RvcState::IDLE) {
-        return;
+bool RvcController::onFrontObstacleDetected() {
+    // [수정] interrupt는 정상 주행(CLEANING/INTENSIFYING) 중에만 처리한다. 회피
+    // 시퀀스 중에는 무시하고 false를 반환하여, 환경이 onTick()으로 평가를 진행하게
+    // 한다. Front Sensor가 Right Scan에 재사용되므로(CHECKING_RIGHT의 우회전),
+    // 회피 중 회전이 만든 거짓 rising-edge interrupt를 여기서 차단한다(F-10 참조).
+    if (_state != RvcState::CLEANING && _state != RvcState::INTENSIFYING) {
+        return false;
     }
     _motor->move(Direction::STOP);
     // [변경] Interrupt stops immediately; later ticks perform left/right evaluation.
     _state = RvcState::AVOIDING_OBSTACLE;
+    return true;
 }
