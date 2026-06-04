@@ -1,5 +1,15 @@
 # SW Architecture Document
 
+## Design Change Trace - 2026-06-04
+
+### [추가]
+- front rising edge가 진짜 interrupt인지 판단할 때 simulator가 controller 상태를 읽을 수 있도록 `RvcController::state() const`를 추가한다. (F-10 참조)
+
+### [변경]
+- edge-trigger front interrupt에 상태 가드를 추가한다. simulator는 front가 clear에서 blocked로 바뀌고 **동시에** controller가 `CLEANING` / `INTENSIFYING`일 때만 `onFrontObstacleDetected()`를 호출한다. `AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING` 중에는 rising edge를 `onTick()`으로 보내 Right Scan의 우회전이 거짓 interrupt를 만들지 못하게 한다. (F-10 참조)
+
+---
+
 ## Design Change Trace - 2026-06-01
 
 ### [추가]
@@ -84,7 +94,7 @@ Timer tick in ESCAPING
 
 ## 5. Simulator 통합
 
-- front obstacle interrupt는 edge-trigger 방식이다. simulator는 front가 clear에서 blocked로 바뀔 때만 `onFrontObstacleDetected()`를 호출한다.
+- front obstacle interrupt는 edge-trigger 방식이며 **상태 가드**도 적용된다. simulator는 front가 clear에서 blocked로 바뀌고 **동시에** controller가 `CLEANING` / `INTENSIFYING`(`RvcController::state()`로 확인)일 때만 `onFrontObstacleDetected()`를 호출한다. 그 외에는 rising edge를 `onTick()`으로 보낸다. 이로써 `AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING` 중 Right Scan을 위한 우회전이 만드는 거짓 interrupt가 오른쪽 평가를 가로채지 못한다. (F-10 참조)
 - front가 계속 blocked인 동안에는 이후 동작을 `onTick()`으로 진행한다.
 - `applyPendingMotorCommands()`는 새로 발행된 명령만 순서대로 반영하며, 테스트는 한 tick에 한 칸 초과 이동하지 않음을 검증한다.
 

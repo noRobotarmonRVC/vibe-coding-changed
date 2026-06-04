@@ -1,5 +1,11 @@
 # Use-Case Model
 
+## SRS Change Trace - 2026-06-04
+
+### [변경]
+- Front Sensor interrupt(UC-03 진입)가 정상 주행(`CLEANING`/`INTENSIFYING`) 중에만 발화하고, 회피 시퀀스(`AVOIDING_OBSTACLE`, `CHECKING_RIGHT`, `ESCAPING`) 중에는 억제됨을 명확히 한다. 그 결과 right scan을 위한 회전이 거짓 interrupt를 발생시켜 `CHECKING_RIGHT` 평가를 가로채지 못한다(failure F-10 참조).
+- UC-04 진입의 포위 상태 평가가 `tick()`으로 진행되며, 회피 중 거짓 front interrupt에 가로채이지 않음을 명확히 한다(failure F-10 참조).
+
 ## SRS Change Trace - 2026-05-29
 
 ### [추가]
@@ -61,15 +67,15 @@ Dust Sensor   -> UC-05 Intensify Cleaning
 | Primary Actor | Timer |
 | 사전 조건 | 청소 세션이 활성 상태이다. |
 | 기본 흐름 | 매 tick마다 dust 상태를 확인하고, 필요한 경우 cleaner power를 조절하며, 기본적으로 전진 명령을 유지한다. |
-| 확장 | 전방 장애물이 감지되면 UC-03으로 확장된다. 먼지가 감지되면 UC-05로 확장된다. |
+| 확장 | 정상 주행(`CLEANING`/`INTENSIFYING`) 중 전방 장애물이 감지되면 UC-03으로 확장된다(회피 시퀀스 중에는 front interrupt가 억제됨, F-10 참조). 먼지가 감지되면 UC-05로 확장된다. [변경] |
 
 ### UC-03: 전방 장애물 회피
 
 | 항목 | 내용 |
 |---|---|
 | Primary Actor | Front Sensor |
-| 사전 조건 | RVC가 cleaning 중이고 전방 장애물이 감지되었다. |
-| 기본 흐름 | 전방 장애물 interrupt에서는 즉시 정지만 수행한다. 이후 tick에서 Left Sensor를 확인하고, left가 막혔으면 오른쪽으로 회전해 `CHECKING_RIGHT` 상태에서 Front Sensor로 기존 오른쪽 방향을 확인한다. |
+| 사전 조건 | RVC가 정상 주행(`CLEANING`/`INTENSIFYING`) 중이고 전방 장애물이 감지되었다. 회피 처리가 시작되면 front interrupt는 억제된다(F-10 참조). |
+| 기본 흐름 | 전방 장애물 interrupt에서는 즉시 정지만 수행한다. [변경] 단 front interrupt는 정상 주행 중에만 발화하고, 회피 시퀀스(`AVOIDING_OBSTACLE`, `CHECKING_RIGHT`, `ESCAPING`) 중에는 억제되어 right scan 회전이 거짓 interrupt를 일으키지 않는다(F-10 참조). 이후 tick에서 Left Sensor를 확인하고, left가 막혔으면 오른쪽으로 회전해 `CHECKING_RIGHT` 상태에서 Front Sensor로 기존 오른쪽 방향을 확인한다. |
 | 사후 조건 | 회피 명령 후 전진 청소로 복귀한다. |
 
 ### UC-04: 포위 상태 탈출
@@ -78,7 +84,7 @@ Dust Sensor   -> UC-05 Intensify Cleaning
 |---|---|
 | Primary Actor | Front Sensor, Left Sensor, Right Scan |
 | 사전 조건 | Front, Left, Right Scan 결과가 모두 blocked이다. |
-| 기본 흐름 | 장애물 감지 interrupt에서는 정지만 수행한다. 이후 tick에서 left 확인, right probe, heading 복구를 진행하고, 포위 상태이면 `BACKWARD` 한 칸 후 다시 side evaluation으로 돌아간다. |
+| 기본 흐름 | 장애물 감지 interrupt에서는 정지만 수행한다. 이후 tick에서 left 확인, right probe, heading 복구를 진행하고, 포위 상태이면 `BACKWARD` 한 칸 후 다시 side evaluation으로 돌아간다. [변경] 포위 상태 평가는 `tick()`으로 진행되며, 회피 중 front interrupt가 억제되므로 right scan 회전으로 인한 거짓 interrupt가 이 전이를 가로채지 않는다(F-10 참조). |
 | 사후 조건 | RVC가 cleaning 상태로 복귀한다. |
 
 ### UC-05: 청소 강도 높이기

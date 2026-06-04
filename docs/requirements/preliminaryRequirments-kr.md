@@ -1,5 +1,10 @@
 # Preliminary Requirements
 
+## SRS Change Trace - 2026-06-04
+
+### [추가]
+- front interrupt는 정상 주행 중에만 처리한다는 기능 요구사항(FR-08)을 추가한다. 회피 시퀀스 중에는 Front Sensor가 right scan에 재사용되므로 interrupt를 억제하여 거짓 발화가 multi-tick 후진 탈출을 끊지 않게 한다(failure F-10 참조).
+
 ## SRS Change Trace - 2026-05-29
 
 ### [추가]
@@ -55,6 +60,7 @@
 | FR-05 | 왼쪽과 오른쪽이 모두 막힌 경우 ESCAPING 상태로 진입한다. |
 | FR-06 | ESCAPING은 tick마다 하나의 이동 명령만 실행한다. |
 | FR-07 | 먼지가 감지되면 일정 tick 동안 cleaner power를 높인 뒤 일반 청소로 복귀한다. |
+| FR-08 | front interrupt는 정상 주행(`CLEANING`/`INTENSIFYING`) 중에만 처리하고, 회피 시퀀스(`AVOIDING_OBSTACLE`, `CHECKING_RIGHT`, `ESCAPING`) 중에는 억제한다(F-10 참조). [추가] |
 
 ---
 

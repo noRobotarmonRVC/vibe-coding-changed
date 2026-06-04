@@ -1,5 +1,15 @@
 # Design Model
 
+## Design Change Trace - 2026-06-04
+
+### [추가]
+- Added `RvcController::state() const` to the controller surface so the simulator can read the controller state when gating the front interrupt. (F-10 참조)
+
+### [변경]
+- Front obstacle interrupt now fires only while the controller is cruising (`CLEANING` / `INTENSIFYING`); during the avoidance sequence (`AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING`) it is suppressed so the right-turn that performs Right Scan does not raise a false interrupt that would hijack `CHECKING_RIGHT`. (F-10 참조)
+
+---
+
 ## Design Change Trace - 2026-06-01
 
 ### [추가]
@@ -81,6 +91,8 @@ Right-side information is intentionally not stored in `SensorData`; it is discov
 - `AVOIDING_OBSTACLE -> CHECKING_RIGHT -> ESCAPING` state progression
 - cleaner power-up duration
 
+It also exposes `state() const`, which returns the current `RvcState`. The simulator reads this to decide whether a front rising edge is a genuine interrupt (only while cruising) or part of the avoidance sequence. (F-10 참조)
+
 Active dependencies:
 - `_front_sensor`
 - `_left_sensor`
@@ -95,8 +107,10 @@ Active dependencies:
 
 Right Scan is now explicit in the state machine.
 
+The front obstacle interrupt fires only while the controller is cruising (`CLEANING` / `INTENSIFYING`). During the avoidance sequence the right-turn that performs Right Scan can make a new wall appear in front, but that rising edge is **not** treated as an interrupt — it is evaluated through `onTick()` in `CHECKING_RIGHT`. (F-10 참조)
+
 ```text
-front obstacle interrupt
+front obstacle interrupt   (only while CLEANING / INTENSIFYING)
   -> STOP
   -> state = AVOIDING_OBSTACLE
 

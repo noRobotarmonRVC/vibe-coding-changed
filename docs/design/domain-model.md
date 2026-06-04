@@ -1,5 +1,12 @@
 # Domain Model
 
+## Design Change Trace - 2026-06-04
+
+### [추가]
+- Added a `state(): RvcState` query method to `RvcController` in the class structure, so the Simulator can read the controller state to guard the front interrupt (fire only while cruising, suppress during the avoidance sequence). (F-10 참조)
+
+---
+
 ## Design Change Trace - 2026-05-29
 
 ### [추가]
@@ -82,3 +89,4 @@ DustSensor ──────────────────┘
 - FrontSensor triggers asynchronously (interrupt); all other sensors are read synchronously per Tick.
 - An Obstacle on all three sides (Front + Left + Right) defines the **Surrounded State**, which requires backward movement before turning.
 - Dust detection during active cleaning raises CleaningCommand to PowerUp temporarily; it does not stop navigation.
+- The FrontSensor interrupt is only meaningful while the RVC is cruising. In the software model, `RvcController` exposes `state(): RvcState` so the Simulator can read the controller state and suppress the interrupt during the avoidance sequence (so the right-turn used for RightScan does not register as a new front obstacle). (F-10 참조)

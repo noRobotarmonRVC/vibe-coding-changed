@@ -1,5 +1,15 @@
 # SW Architecture Document
 
+## Design Change Trace - 2026-06-04
+
+### [추가]
+- Added `RvcController::state() const` so the simulator can read the controller state when deciding whether a front rising edge is a real interrupt. (F-10 참조)
+
+### [변경]
+- Edge-triggered front interrupt is now also state-gated: the simulator calls `onFrontObstacleDetected()` only when front changes from clear to blocked **and** the controller is in `CLEANING` / `INTENSIFYING`. During `AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING` the rising edge is routed to `onTick()` instead, so the Right Scan right-turn cannot raise a false interrupt. (F-10 참조)
+
+---
+
 ## Design Change Trace - 2026-06-01
 
 ### [추가]
@@ -84,7 +94,7 @@ Timer tick in ESCAPING
 
 ## 5. Simulator Integration
 
-- Front obstacle interrupt is edge-triggered: the simulator calls `onFrontObstacleDetected()` only when front changes from clear to blocked.
+- Front obstacle interrupt is edge-triggered **and** state-gated: the simulator calls `onFrontObstacleDetected()` only when front changes from clear to blocked **and** the controller is in `CLEANING` / `INTENSIFYING` (read via `RvcController::state()`). Otherwise the rising edge is routed to `onTick()`. This prevents the right-turn performed for Right Scan during `AVOIDING_OBSTACLE` / `CHECKING_RIGHT` / `ESCAPING` from producing a false interrupt that hijacks the right-side evaluation. (F-10 참조)
 - While front remains blocked, later behavior progresses through `onTick()`.
 - `applyPendingMotorCommands()` applies each newly emitted command in order, and tests verify no tick moves more than one cell.
 

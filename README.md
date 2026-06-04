@@ -1,5 +1,19 @@
 # RVC Control SW
 
+## Change Trace - 2026-06-04
+
+### [추가]
+- Added map-based dead-end escape regression tests in `SimulatorTest` (left-gap, right-gap/L-shape, full-corridor backup, backward-chain integrity).
+- Added `RvcController::state()` so the Simulator can gate the front interrupt on the controller state.
+
+### [변경]
+- Constrained the Front Sensor interrupt to fire only while cruising (`CLEANING`/`INTENSIFYING`). During obstacle handling the Front Sensor is reused for the right scan, so a rotation was raising a false interrupt that hijacked `CHECKING_RIGHT` and broke the backward escape — trapping the RVC in dead-end corridors even when an exit existed (failure F-10).
+
+### 범위 밖
+- Fully sealed regions (no exit) have no termination condition by design; see F-10 "Out of Scope".
+
+---
+
 ## Change Trace - 2026-05-29
 
 ### [추가]

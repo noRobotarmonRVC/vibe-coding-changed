@@ -14,6 +14,13 @@
 
 ---
 
+## SRS Change Trace - 2026-06-04
+
+### [변경]
+- Front Sensor interrupt를 정상 주행(`CLEANING`/`INTENSIFYING`) 중에만 발화하도록 제한한다. Front Sensor는 Right Scan에 재사용되므로(회피 시퀀스 중 우회전), 회피 중 회전이 거짓 rising-edge interrupt를 발생시켜 `CHECKING_RIGHT` 평가를 가로채고 multi-tick 후진 탈출을 끊었다. 그 결과 출구가 있어도 막다른 통로에서 무한 진동했다(failure F-10 참조).
+
+---
+
 ## 1. 품질 속성
 
 | 속성 | 요구사항 |
@@ -27,7 +34,7 @@
 
 ## 2. 성능과 동작 제약
 
-- Front Sensor interrupt는 전방 장애물에 즉시 반응해야 한다.
+- Front Sensor interrupt는 정상 주행(`CLEANING`/`INTENSIFYING`) 중 전방 장애물에 즉시 반응해야 한다. 단 Front Sensor는 Right Scan에 재사용되므로, 회피 시퀀스(`AVOIDING_OBSTACLE`, `CHECKING_RIGHT`, `ESCAPING`) 중에는 interrupt를 억제한다. [변경]
 - tick 기반 동작은 한 tick에 하나의 실제 이동만 반영해야 한다.
 - ESCAPING은 여러 tick에 나누어 진행되어야 하며, 단일 이벤트에서 여러 칸 이동하면 안 된다.
 
@@ -45,4 +52,5 @@
 
 - `RvcControllerTest`는 Right Scan 시 `RIGHT`, front detect, `LEFT` 복구, `BACKWARD` 진행이 tick별로 관찰되는지 검증해야 한다.
 - `SimulatorTest`는 ESCAPING 중 tick마다 한 칸 이하로만 위치가 변하는지 검증해야 한다.
+- `SimulatorTest`는 출구가 있는 막다른 통로에서 RVC가 탈출하는지 맵 기반 회귀 테스트로 검증해야 한다(failure F-10 참조). 구체적으로 `EscapesDeadEndCorridorThroughLeftGap`, `EscapesDeadEndCorridorThroughRightGap`, `BacksUpFullCorridorThenEscapes`, `AvoidanceInterruptDoesNotBreakBackupChain` 네 가지를 포함하며, 회피 중 거짓 front interrupt가 multi-tick 후진 연쇄를 끊지 않음을 확인한다. [추가]
 - 기존 start, stop, dust, normal tick 동작은 유지되어야 한다.

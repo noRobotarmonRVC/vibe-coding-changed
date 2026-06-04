@@ -1,5 +1,10 @@
 # The RVC Contorl SW
 
+## SRS Change Trace - 2026-06-04
+
+### [변경]
+- Constrained front obstacle interrupt handling so it is processed only while the RVC is cruising (normal cleaning); during obstacle avoidance the Front Sensor is reused for the right scan, so the interrupt is suppressed to avoid a false trigger that breaks the multi-tick backward escape (see failure F-10).
+
 ## SRS Change Trace - 2026-05-29
 
 ### [추가]
@@ -18,6 +23,7 @@
 - An RVC automatically cleans and mops household surface.
 - It goes straight forward while cleaning
 - If its sensors found an obstacle, it stops cleaning, turns aside left or right, and goes forward with cleaning.
+- The front obstacle interrupt is only processed while cruising (normal cleaning); during obstacle avoidance it is suppressed, because the Front Sensor is reused for the right scan and a rotation would otherwise raise a false interrupt (see failure F-10). [변경]
 - If there are obstacles in front, left, and the right scan result, it moves backward one cell on a tick, turns aside on a later tick, and goes forward on a later tick.
 - If it detects dust, power up the cleaning for a while.
 - We do not consider the detail design and implementation on HW controls.

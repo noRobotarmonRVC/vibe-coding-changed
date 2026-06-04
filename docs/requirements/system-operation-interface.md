@@ -1,5 +1,11 @@
 # System Operation Interface
 
+## SRS Change Trace - 2026-06-04
+
+### [변경]
+- Gated `onFrontObstacleDetected()` on controller state: it acts only while cruising (`CLEANING`/`INTENSIFYING`) and is suppressed during the avoidance sequence (`AVOIDING_OBSTACLE`, `CHECKING_RIGHT`, `ESCAPING`), so a right-scan rotation cannot raise a false interrupt that hijacks `CHECKING_RIGHT` (see failure F-10).
+- Refined the simulator contract: the front obstacle interrupt fires on a clear-to-blocked edge **and only while the controller is cruising (`CLEANING`/`INTENSIFYING`)** (see failure F-10).
+
 ## SRS Change Trace - 2026-06-01
 
 ### [추가]
@@ -51,6 +57,7 @@ Interrupt-based notification from Front Sensor.
 
 Contract:
 - If the system is idle, do nothing.
+- [변경] Act only while cruising (`CLEANING`/`INTENSIFYING`); suppress the interrupt during the avoidance sequence (`AVOIDING_OBSTACLE`, `CHECKING_RIGHT`, `ESCAPING`), where the Front Sensor is reused for the right scan and a rotation would otherwise raise a false interrupt that hijacks `CHECKING_RIGHT` (see failure F-10). When suppressed, side evaluation continues via `tick()`.
 - Otherwise issue `STOP`.
 - Set state to `AVOIDING_OBSTACLE`.
 - Do not perform Right Scan inside this interrupt handler; right-side probing is advanced by later `tick()` calls.
@@ -86,6 +93,6 @@ tick()
 
 ## 4. Simulator Contract
 
-- The simulator triggers front obstacle interrupt only on a clear-to-blocked edge.
+- The simulator triggers front obstacle interrupt only on a clear-to-blocked edge **and only while the controller is cruising (`CLEANING`/`INTENSIFYING`)**; during the avoidance sequence the interrupt is suppressed so a right-scan rotation does not raise a false interrupt (see failure F-10). [변경]
 - While front remains blocked, the controller progresses through `tick()`.
 - Each simulator tick applies newly emitted motor commands and tests assert that physical movement is at most one cell.
