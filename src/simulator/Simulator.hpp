@@ -21,6 +21,7 @@ public:
     void stop();
     void tick();                  // auto-detects sensors from grid each cycle
     void triggerFrontObstacle();  // manual interrupt override
+    [[nodiscard]] bool isRunning() const;
 
     // Manual sensor injection (overrides grid auto-detection for that tick)
     void injectFront(bool reading);
@@ -46,15 +47,19 @@ public:
 
 private:
     [[nodiscard]] bool     isBlocked(Position p)               const;
+    [[nodiscard]] bool     isOutOfBounds(Position p)            const;
     [[nodiscard]] static Position adjacentCell(Position p, Heading h);
     [[nodiscard]] static Heading  turnLeft(Heading h);
     [[nodiscard]] static Heading  turnRight(Heading h);
     void     applyPendingMotorCommands();
+    bool     steerAwayFromBoundary();
 
     int     _grid_width;
     int     _grid_height;
     Position _pos;
     Heading  _heading;
+    // [추가] Separates background rendering ticks from active cleaning ticks.
+    bool     _running = false;
     size_t   _motor_log_applied = 0;
     // [추가] Tracks front obstacle rising edge for interrupt semantics.
     bool     _prev_front_blocked = false;

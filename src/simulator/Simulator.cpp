@@ -9,16 +9,25 @@ Simulator::Simulator(int grid_width, int grid_height,
     , _controller(&_front, &_left, &_dust, &_motor, &_cleaner, &_nav) {}
 
 void Simulator::start() {
+    // [추가] Simulator ticks are active only after the cleaning session starts.
+    _running = true;
     _controller.start();
     applyPendingMotorCommands();
 }
 
 void Simulator::stop() {
+    // [추가] Stopped sessions ignore later background tick calls.
+    _running = false;
     _controller.stop();
     applyPendingMotorCommands();
 }
 
 void Simulator::tick() {
+    // [변경] Idle ticks no longer mutate logs, position, or the UI tick counter.
+    if (!_running) {
+        return;
+    }
+
     // [삭제] No right sensor injection; heading-aware front readings drive right probing.
     // Auto-inject left sensor from the grid (right sensor no longer exists)
     _left.inject(isBlocked(adjacentCell(_pos, turnLeft(_heading))));
@@ -35,6 +44,13 @@ void Simulator::tick() {
         _dust_cells.erase(dust_key);
     } else {
         _dust.inject(false);
+    }
+
+    // [추가] Console-demo boundary steering prevents endless outer-wall orbiting.
+    if (isOutOfBounds(adjacentCell(_pos, _heading)) && steerAwayFromBoundary()) {
+        _prev_front_blocked = false;
+        applyPendingMotorCommands();
+        return;
     }
 
     // Front obstacle is an interrupt: fire only on the rising edge (clear ->
@@ -57,6 +73,7 @@ void Simulator::triggerFrontObstacle() {
 void Simulator::injectFront(bool reading) { _front.inject(reading); }
 void Simulator::injectLeft(bool reading)  { _left.inject(reading); }
 void Simulator::injectDust(bool reading)  { _dust.inject(reading); }
+bool Simulator::isRunning() const { return _running; }
 
 void Simulator::placeObstacle(int x, int y) { _obstacles.insert({x, y}); }
 void Simulator::placeDust(int x, int y)     { _dust_cells.insert({x, y}); }
@@ -76,10 +93,14 @@ const std::vector<CleanPower>&      Simulator::cleanerLog() const { return _clea
 // ── private helpers ────────────────────────────────────────────────────────────
 
 bool Simulator::isBlocked(Position p) const {
-    if (p.x < 0 || p.x >= _grid_width || p.y < 0 || p.y >= _grid_height) {
+    if (isOutOfBounds(p)) {
         return true;
     }
     return _obstacles.count({p.x, p.y}) > 0;
+}
+
+bool Simulator::isOutOfBounds(Position p) const {
+    return p.x < 0 || p.x >= _grid_width || p.y < 0 || p.y >= _grid_height;
 }
 
 Position Simulator::adjacentCell(Position p, Heading h) {
@@ -139,4 +160,36 @@ void Simulator::applyPendingMotorCommands() {
         }
     }
     _motor_log_applied = log.size();
+}
+
+bool Simulator::steerAwayFromBoundary() {
+    // [추가] Treat the grid edge as a sweep-row transition, not a hardware sensor path.
+    struct BoundaryTurn {
+        Direction first_turn;
+        Heading side_heading;
+        Direction second_turn;
+    };
+
+    BoundaryTurn primary{Direction::RIGHT, turnRight(_heading), Direction::RIGHT};
+    BoundaryTurn alternate{Direction::LEFT, turnLeft(_heading), Direction::LEFT};
+
+    if (_heading == Heading::WEST || _heading == Heading::SOUTH) {
+        primary = {Direction::LEFT, turnLeft(_heading), Direction::LEFT};
+        alternate = {Direction::RIGHT, turnRight(_heading), Direction::RIGHT};
+    }
+
+    const BoundaryTurn choices[] = {primary, alternate};
+    for (const BoundaryTurn& choice : choices) {
+        const Position side_step = adjacentCell(_pos, choice.side_heading);
+        if (!isBlocked(side_step)) {
+            _motor.move(choice.first_turn);
+            _motor.move(Direction::FORWARD);
+            _motor.move(choice.second_turn);
+            return true;
+        }
+    }
+
+    _motor.move(Direction::LEFT);
+    _motor.move(Direction::LEFT);
+    return true;
 }

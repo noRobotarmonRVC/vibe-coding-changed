@@ -159,8 +159,11 @@ int main() {
         while (running) {
             std::this_thread::sleep_for(std::chrono::milliseconds(tick_ms.load()));
             std::lock_guard<std::mutex> lock(sim_mutex);
-            ++tick;
-            sim.tick();
+            // [변경] The display clock advances only while cleaning is active.
+            if (sim.isRunning()) {
+                ++tick;
+                sim.tick();
+            }
 
             std::cout << "\033[H";
             display.render(sim.pos(), sim.heading(), sim.obstacles(), sim.dustCells(),

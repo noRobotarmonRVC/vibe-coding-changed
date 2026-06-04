@@ -99,6 +99,30 @@ TEST(SimulatorTest, TickIgnoredWhenIdle) {
     EXPECT_TRUE(sim.cleanerLog().empty());
 }
 
+// [추가] The console simulation clock should advance only during an active run.
+TEST(SimulatorTest, RunningStateChangesOnlyByStartAndStop) {
+    Simulator sim;
+    EXPECT_FALSE(sim.isRunning());
+
+    sim.start();
+    EXPECT_TRUE(sim.isRunning());
+
+    sim.stop();
+    EXPECT_FALSE(sim.isRunning());
+}
+
+// [추가] Boundary steering keeps the demo from orbiting only the outer wall.
+TEST(SimulatorTest, BoundarySteeringMovesInwardAndReversesSweep) {
+    Simulator sim(5, 5, {0, 0}, Heading::WEST);
+    sim.start();
+
+    sim.tick();
+
+    EXPECT_EQ(sim.pos().x, 0);
+    EXPECT_EQ(sim.pos().y, 1);
+    EXPECT_EQ(sim.heading(), Heading::EAST);
+}
+
 // Edge-triggered interrupt: STOP is issued once even while the front stays blocked.
 TEST(SimulatorTest, FrontInterruptFiresOnceWhileStuck) {
     Simulator sim(20, 12, {5, 5}, Heading::EAST);
